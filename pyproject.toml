@@ -1,0 +1,29 @@
+[tool.poetry]
+name = "wiggy-conversion"
+version = "0.1.0"
+description = ""
+authors = ["Michael Brown <kurosama112@gmail.com>"]
+readme = "README.md"
+packages = [{include = "wiggy_conversion"}]
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.12"
+pandas = "^2.0.1"
+matplotlib = "^3.7.1"
+seaborn = "^0.12.2"
+pydantic = "^1.10.8"
+redis = "^4.5.5"
+sqlalchemy = "^2.0.15"
+redis-orm = "^0.4.1"
+metatrader5 = "^5.0.45"
+redis-om = "^0.1.2"
+sqlalchemy-mixins = "^2.0.0"
+scipy = "^1.10.1"
+fastapi = "^0.95.2"
+uvicorn = "^0.22.0"
+python-dotenv = "^1.0.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
