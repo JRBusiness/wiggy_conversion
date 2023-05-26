@@ -17,3 +17,6 @@ uvicorn.run(
     ssl_certfile="certs/local.pem"
 
 )
+if not mt5.initialize():
+    print("initialize() failed")
+    mt5.shutdown()
