@@ -1,18 +1,21 @@
-from typing import Any, List, Optional, Union
+"""
+@author: Kuro
+"""
+from typing import Optional, List, Union, Any
 from uuid import UUID
 
-from pydantic import BaseModel
-from redis_om import RedisModel
+from app.shared.schemas.orm_schema import ORMCamelModel
+from app.shared.schemas.page_schema import PagedResponse
 
 
-class BaseResponse(BaseModel):
+class BaseResponse(ORMCamelModel):
     """
     Base Response abstraction for standardized returns
     """
 
     success: bool = False
-    error: Optional[str] = None
-    response: Optional[Any] = None
+    error: Optional[str]
+    response: Optional[Optional[Union[str, dict, List[dict], UUID]]]
 
     class Config:
         arbitrary_types_allowed = True
@@ -23,18 +26,6 @@ class BaseResponse(BaseModel):
         """
         kwargs.pop("exclude_none", None)
         return super().dict(*args, exclude_none=True, **kwargs)
-
-
-class PagedResponse(RedisModel):
-    """
-    PagedResponse is a response object that contains a list of objects and
-    pagination information for the client to use.
-    """
-    items: List[Any]
-    page: int
-    page_size: int
-    pages: int
-    total: int
 
 
 class PagedBaseResponse(BaseResponse):

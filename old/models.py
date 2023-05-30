@@ -2,7 +2,7 @@ from sqlalchemy_mixins import AllFeaturesMixin
 from sqlalchemy import Column, Integer, String, Float, DateTime
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.declarative import declarative_base
-from metatrader5 import OrderInfo
+
 
 Base = declarative_base()
 
@@ -84,15 +84,6 @@ class OptimizationStats(Base, ModelMixin):
     drawdown = Column(Float)
     # Include additional columns as needed
 
-
-class Portfolio(Base):
-    __tablename__ = 'portfolio'
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    broker = Column(String)
-    leverage = Column(Float)
-    balance = Column(Float)
-    # Include additional columns as needed
 
 
 class MT5TradeHistory(Base):

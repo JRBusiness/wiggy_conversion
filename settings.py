@@ -1,13 +1,24 @@
 from datetime import datetime
-
 from dotenv import load_dotenv
+import os
 
 load_dotenv()
+base_dir = f"{os.path.dirname(os.path.abspath(__file__))}"
 
-import os
+
 
 class Config:
 # APP
+    fastapi_key: str = "ff8f5d6e-9ed8-4d62-b343-e151ddd32715"
+    agent_key: str = "a33e748b-054d-462c-bcf5-2c5880394a17"
+    jwt_algo: str = "HS256"
+    admin_key: str = "a33e748b-054d-462c-bcf5-2c5880394a17"
+    postgres_connection = os.getenv("POSTGRES_CONNECTION", "postgres:1121@localhost:5432/stocks")
+
+
+    MAX_TRADES = os.getenv("MAX_TRADES", 6)
+    MAX_LONG_TRADES = os.getenv("MAX_LONG_TRADES", 3)
+    MAX_SHORT_TRADES = os.getenv("MAX_SHORT_TRADES", 3)
     APP_NAME = os.getenv("APP_NAME", "FastAPI")
     APP_DESCRIPTION = os.getenv("APP_DESCRIPTION", "FastAPI")
     APP_VERSION = os.getenv("APP_VERSION", "0.0.1")
@@ -138,3 +149,15 @@ class Config:
     LOGGING_FILE_INTERVAL = os.getenv("LOGGING_FILE_INTERVAL", 1)
     LOGGING_FILE_UTC = os.getenv("LOGGING_FILE_UTC", True)
     LOGGING_FILE_AT_TIME = os.getenv("LOGGING_FILE_AT_TIME", "")
+
+
+# Trading
+
+    TRADING_EXCHANGE = os.getenv("TRADING_EXCHANGE", "binance")
+    TRADING_SYMBOL = os.getenv("TRADING_SYMBOL", "BTCUSDT")
+    TRADING_INTERVAL = os.getenv("TRADING_INTERVAL", "1m")
+    TRADING_LIMIT = os.getenv("TRADING_LIMIT", 1000)
+    TRADING_START_DATE = os.getenv("TRADING_START_DATE", "2020-01-01")
+    TRADING_END_DATE = os.getenv("TRADING_END_DATE", "2020-01-02")
+    TRADING_TIMEFRAME = os.getenv("TRADING_TIMEFRAME", "1m")
+    TRADING_MAX_ORDERS = os.getenv("TRADING_MAX_ORDERS", 1)

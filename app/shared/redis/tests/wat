@@ -1,0 +1,21 @@
+when a user connects to the websocket, we will update the socket sessions list in state
+        (redis) so we have a running backend of all the connected users, and their sessions, and their
+        games, and their rooms, and their users in the room, and their users in the room's sessions, and their
+        users in the room's games, and their users in the room's games' sessions, and their users in the room's
+        games' sessions' users, and their users in the room's games' sessions' users' sessions, and their users
+        in the room's games' sessions' users' sessions' games, and their users in the room's games' sessions' users'
+        sessions' games' sessions, and their users in the room's games' sessions' users' sessions' games' sessions' users,
+        and their users in the room's games' sessions' users' sessions' games' sessions' users' sessions, and their users in
+        the room's games' sessions' users' sessions' games' sessions' users' sessions' games, and their users in the room's games'
+        sessions' users' sessions' games' sessions' users' sessions' games' sessions, and their users in the room's games' sessions'
+        users' sessions' games' sessions' users' sessions' games' sessions' users, and their users in the room's games' sessions' users'
+        sessions' games' sessions' users' sessions' games' sessions' users' sessions, and their users in the room's games' sessions' users'
+        sessions' games' sessions' users' sessions' games' sessions' users' sessions' games, and their users in the room's games' sessions'
+        users' sessions' games' sessions' users' sessions' games' sessions' users' sessions' games' sessions, and their users in the room's games'
+        sessions' users' sessions' games' sessions' users' sessions' games' sessions' users' sessions' games' sessions' users, and their users in
+        the room's games' sessions' users' sessions' games' sessions' users' sessions' games' sessions' users' sessions' games' sessions' users'
+        sessions, and their users in the room's games' sessions' users' sessions' games' sessions' users' sessions' games' sessions' users' sessions'
+        games' sessions' users' sessions' games, and their users in the room's games' sessions' users' sessions' games' sessions' users' sessions' games'
+        sessions' users' sessions' games' sessions' users' sessions' games' sessions, and their users in the room's games' sessions' users' sessions' games'
+        sessions' users' sessions' games' sessions' users' sessions' games
+
