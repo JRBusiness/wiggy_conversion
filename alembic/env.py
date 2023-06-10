@@ -17,7 +17,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     filemode="a",
     datefmt="%d-%b-%y %H:%M:%S",
-    force=True
+    force=True,
 )
 logger = logging.getLogger("alembic")
 
@@ -39,7 +39,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 sys.path.append(BASE_DIR)
 config = context.config
-url = f'postgresql+psycopg2://{settings.Config.postgres_connection}'
+url = f"postgresql+psycopg2://{settings.Config.postgres_connection}"
 config.set_main_option("sqlalchemy.url", url)
 alembic_config = config.get_section(config.config_ini_section)
 connectable = engine_from_config(

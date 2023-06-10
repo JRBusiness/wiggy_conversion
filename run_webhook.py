@@ -10,5 +10,4 @@ uvicorn.run(
     port=8005,
     reload=False,
     workers=1,
-
 )

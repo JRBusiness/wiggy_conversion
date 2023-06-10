@@ -33,6 +33,16 @@ passlib = "^1.7.4"
 fastapi-camelcase = "^1.0.5"
 psycopg2-binary = "^2.9.6"
 sentry-sdk = {extras = ["fastapi"], version = "^1.24.0"}
+tqdm = "^4.65.0"
+bs4 = "^0.0.1"
+beautifulsoup4 = "^4.12.2"
+mailgun = "^0.1.1"
+urllib3 = "^2.0.2"
+simplejson = "^3.19.1"
+requests = "^2.31.0"
+mplfinance = "^0.12.9b7"
+yfinance = "^0.2.18"
+ta = "^0.10.2"
 
 
 [build-system]

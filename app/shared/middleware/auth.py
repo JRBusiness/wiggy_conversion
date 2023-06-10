@@ -144,4 +144,3 @@ class JWTBearer(HTTPBearer, AuthenticationBackend):
         # logger.info(f"decoded_user: {decoded_user}")
         # logger.info(f"middleware_user_type: {middleware_user_type}")
         return AuthCredentials(["authenticated"]), middleware_user_type(decoded_user.id)
-

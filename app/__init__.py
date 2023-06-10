@@ -1,9 +1,7 @@
 import logging
 
-import sentry_sdk
 from fastapi import FastAPI
-from sentry_sdk.integrations.fastapi import FastApiIntegration
-from sentry_sdk.integrations.starlette import StarletteIntegration
+
 from starlette.responses import RedirectResponse
 
 from app.shared.bases.base_model import ModelMixin
@@ -19,6 +17,7 @@ from settings import Config
 from app.shared.middleware.auth import JWTBearer
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
+
 #
 # logger.configure(
 #     handlers=[
@@ -47,21 +46,21 @@ from loguru import logger
 # )
 app = FastAPI()
 
-sentry_sdk.init(
-    traces_sample_rate=1.0,
-    dsn="https://79c131c1546f4f96b8da5fae63b856d9@o4505270399664128.ingest.sentry.io/4505270401040384",
-    max_breadcrumbs=50,
-    debug=True,
-    integrations=[
-        StarletteIntegration(transaction_style="url"),
-        FastApiIntegration(transaction_style="url"),
-    ]
+# sentry_sdk.init(
+#     traces_sample_rate=1.0,
+#     dsn="https://79c131c1546f4f96b8da5fae63b856d9@o4505270399664128.ingest.sentry.io/4505270401040384",
+#     max_breadcrumbs=50,
+#     debug=True,
+#     integrations=[
+#         # StarletteIntegration(transaction_style="url"),
+#         FastApiIntegration(transaction_style="url"),
+#     ],
+# )
 
-)
 
 @app.get("/", include_in_schema=False)
 def index():
-    return RedirectResponse('/docs')
+    return RedirectResponse("/docs")
 
 
 app.add_middleware(

@@ -30,6 +30,7 @@ class PagedResponse(RedisModel):
     PagedResponse is a response object that contains a list of objects and
     pagination information for the client to use.
     """
+
     items: List[Any]
     page: int
     page_size: int

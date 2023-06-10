@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from enum import Enum
 from typing import Optional
@@ -6,12 +7,13 @@ import MetaTrader5 as mt5
 import sentry_sdk
 from aredis_om import RedisModel, JsonModel
 from fastapi import Body
-from pydantic import BaseModel, validator, Field, BaseConfig
+from pydantic import BaseModel, validator, Field, BaseConfig, Extra
 from loguru import logger
 
 logger.debug("Importing schemas from webhook.schemas.py")
 
 sentry_sdk.init()
+
 
 # Request model for opening a trade in MT5
 class TradeRequest(BaseModel):
@@ -52,17 +54,17 @@ class TradeStatsResponse(BaseModel):
     win_rate: float
 
 
-
 class Context(BaseModel):
     id: int = Field(..., description="ID of the context")
     name: str = Field(..., description="Name of the context")
     description: str = Field(..., description="Description of the context")
-    timestamp: datetime = Field(..., description="Date and time of the context creation")
+    timestamp: datetime = Field(
+        ..., description="Date and time of the context creation"
+    )
     is_active: bool = Field(..., description="Whether the context is active or not")
 
     class Config(BaseConfig):
         orm_mode = True
-
 
 
 class Actions(str, Enum):
@@ -99,6 +101,7 @@ class Action(BaseModel):
     trade_id: int = Field(..., description="Trade ID to perform the action on")
     price: float = Field(..., description="Price to perform the action at")
     context: Context = Field(..., description="Context of the action")
+
 
 class TypeEnum(str, Enum):
     __self__: str
@@ -172,7 +175,7 @@ class DealEntryTypeEnum(TypeEnum):
 class Order(JsonModel):
     symbol: str
     volume: float
-    type: int
+    trade_type: str
     entry_price: float
     sl: float
     tp: float
@@ -180,16 +183,46 @@ class Order(JsonModel):
 
 class MT5TradeRequest(BaseModel):
     symbol: Optional[str]
-    type: Optional[int]
+    trade_type: Optional[str]
     entry_price: Optional[float] = 0.0
     sl: Optional[float] = Field(alias="stop_loss")
     tp: Optional[float] = Field(alias="take_profit")
-    volume: Optional[float]
 
     class Config(BaseConfig):
+        """
+        Config class for the MT5TradeRequest model
+        """
+
         allow_population_by_field_name = True
+        extra = Extra.allow
+        # create a custom encoder to validate our comma in the volume field and round the float
+
+        class VolumeEncoder(json.JSONEncoder):
+            """
+            Custom encoder to validate the volume field and round the float
+            the volume field needs to be a string with a comma in it, or a float otherwise it will
+            just return the value as a rounded float
+
+            """
+
+            def default(self, obj):
+                """
+                Default method for the custom encoder
+                :param obj:
+                :return:
+                """
+                if isinstance(obj, float):
+                    return round(obj, 2)
+                elif isinstance(obj, str):
+                    try:
+                        return round(float(obj.replace(",", ".")), 2)
+                    except ValueError:
+                        return obj
+                else:
+                    return super().default(obj)
+
         json_encoders = {
-            float: lambda v: round(v, 6)
+            VolumeEncoder: lambda obj: obj.default(obj),
         }
 
     #
@@ -201,15 +234,17 @@ class MT5TradeRequest(BaseModel):
     """
       Expecting property name enclosed in double quotes: line 1 column 114 (char 113) (type=value_error.jsondecode; msg=Expecting property name enclosed in double quotes; doc={"symbol": "USDCHF",  "trade_type": "buy", "entry_price": 0.9,  "stop_loss":  0,  "take_profit": 0,  "volume": 6,915.4 }; pos=113; lineno=1; colno=114)
 
-    """
-
-    @validator("volume", pre=True)
-    def validate_volume(cls, value):
-        ## in the case of string ploike 234,5545  replace ,
-
-        logger.debug(f"Value: {value}")
-
-        return float(f"{value:.2f}") / 100
+    # """
+    #
+    # @validator("volume", pre=True)
+    # def validate_volume(cls, value):
+    #     ## in the case of string ploike 234,5545  replace ,
+    #     if isinstance(value, str):
+    #         value = value.replace(",", "")
+    #
+    #     logger.debug(f"Value: {value}")
+    #
+    #     return float(f"{value:.2f}") / 10
 
 
 class TradeHistoryResponse(BaseModel):

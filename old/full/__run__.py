@@ -54,19 +54,28 @@ class Optimizer:
 
 
 class SignalGenerator:
-    def generate_signals(self, data: MarketData, strategy_params: StrategyParams) -> List[Signal]:
+    def generate_signals(
+        self, data: MarketData, strategy_params: StrategyParams
+    ) -> List[Signal]:
         signals = []
 
         if (
-                data.wick_condition1 and data.wick_condition2 and data.wick_condition3 and
-                data.body_condition1 and data.body_condition2 and data.body_condition3 and
-                data.ema_condition1 and data.ema_condition2 and
-                data.volatility_condition1 and data.volatility_condition2
+            data.wick_condition1
+            and data.wick_condition2
+            and data.wick_condition3
+            and data.body_condition1
+            and data.body_condition2
+            and data.body_condition3
+            and data.ema_condition1
+            and data.ema_condition2
+            and data.volatility_condition1
+            and data.volatility_condition2
         ):
             signals.append(Signal(symbol=data.symbol, message="Enter Long Trade"))
 
         # Include additional conditions and actions based on your Pinescript strategy
         # ...
+
 
 #         return signals
 #
@@ -142,6 +151,7 @@ class OptimizerAgent:
     def restart_trading_actor(self, symbol, strategy_params):
         pass
 
+
 class TradingActor:
     def __init__(self, symbol: Symbol, strategy_params: StrategyParams):
         self.symbol = symbol
@@ -167,7 +177,9 @@ class ActorManager:
     def get_actor(self, symbol: Symbol) -> TradingActor:
         return self.actors.get(symbol)
 
-    def restart_trading_actor(self, symbol: Symbol, new_strategy_params: StrategyParams):
+    def restart_trading_actor(
+        self, symbol: Symbol, new_strategy_params: StrategyParams
+    ):
         if actor := self.actors.get(symbol):
             actor.strategy_params = new_strategy_params
             # Restart the trading actor with the new strategy parameters
@@ -196,9 +208,14 @@ class ActorManager:
             portfolio_balance += actor.get_balance()
         return portfolio_balance
 
+
 class SignalScanner:
-    def __init__(self, market_data_manager: MarketDataManager, signal_generator: SignalGenerator,
-                 actor_manager: ActorManager):
+    def __init__(
+        self,
+        market_data_manager: MarketDataManager,
+        signal_generator: SignalGenerator,
+        actor_manager: ActorManager,
+    ):
         self.market_data_manager = market_data_manager
         self.signal_generator = signal_generator
         self.actor_manager = actor_manager
@@ -208,7 +225,9 @@ class SignalScanner:
             for symbol in symbols:
                 market_data = self.market_data_manager.fetch_market_data(symbol)
                 strategy_params = self.actor_manager.get_actor(symbol).strategy_params
-                signals = self.signal_generator.generate_signals(market_data, strategy_params)
+                signals = self.signal_generator.generate_signals(
+                    market_data, strategy_params
+                )
                 self.process_signals(signals, symbol)
 
             # Additional logic and control flow for optimization scheduling
@@ -220,13 +239,15 @@ class SignalScanner:
     def process_signals(self, signals: List[Signal], symbol: Symbol):
         actor = self.actor_manager.get_actor(symbol)
         for signal in signals:
-            if signal.wick_trigger and signal.body_condition_trigger and signal.green_candle_trigger:
+            if (
+                signal.wick_trigger
+                and signal.body_condition_trigger
+                and signal.green_candle_trigger
+            ):
                 actor.enter_long_trade()
             elif signal.volatility_trigger and signal.emas_trigger:
                 actor.close_and_reverse()
             # Add more conditions and actions as needed
-
-
 
 
 # Create the necessary instances and start the signal scanning process

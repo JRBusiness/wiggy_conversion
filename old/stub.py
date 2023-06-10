@@ -15,8 +15,15 @@ from redis_om import RedisModel
 
 
 class StrategyParams:
-    def __init__(self, bband_length: int, bband_stddev: float, ema9_length: int, ema26_length: int, ema100_length: int,
-                 fibonacci_retrace: float):
+    def __init__(
+        self,
+        bband_length: int,
+        bband_stddev: float,
+        ema9_length: int,
+        ema26_length: int,
+        ema100_length: int,
+        fibonacci_retrace: float,
+    ):
         self.bband_length = bband_length
         self.bband_stddev = bband_stddev
         self.ema9_length = ema9_length
@@ -26,7 +33,7 @@ class StrategyParams:
 
 
 class ActorState(RedisModel):
-    __tablename__ = 'actor_states'
+    __tablename__ = "actor_states"
 
     id = Column(Integer, primary_key=True)
     # TODO: replace me with a nested model
@@ -41,7 +48,7 @@ class TradeStats(BaseModel):
 
 class StatsManager:
     def __init__(self):
-        self.engine = create_engine('sqlite:///trade_stats.db')
+        self.engine = create_engine("sqlite:///trade_stats.db")
         Session = sessionmaker(bind=self.engine)
         self.session = Session()
 
@@ -52,7 +59,7 @@ class StatsManager:
 
 class ActorManager:
     def __init__(self):
-        self.redis = Redis(host='localhost', port=6379)
+        self.redis = Redis(host="localhost", port=6379)
         self.stats_manager = StatsManager()
 
     def restart_actor(self, symbol: str, strategy_params: StrategyParams):
@@ -93,7 +100,9 @@ class MarketData:
     Represents market data for a symbol.
     """
 
-    def __init__(self, symbol: Symbol, ohlc_data: List[float], volume_data: List[float]):
+    def __init__(
+        self, symbol: Symbol, ohlc_data: List[float], volume_data: List[float]
+    ):
         self.symbol = symbol
         self.ohlc_data = ohlc_data
         self.volume_data = volume_data
@@ -104,7 +113,14 @@ class Signal:
     Represents a trading signal.
     """
 
-    def __init__(self, symbol: Symbol, timestamp: datetime, entry_price: float, exit_price: float, signal_type: str):
+    def __init__(
+        self,
+        symbol: Symbol,
+        timestamp: datetime,
+        entry_price: float,
+        exit_price: float,
+        signal_type: str,
+    ):
         self.is_buy_signal = None
         self.is_sell_signal = None
         self.condition2 = None
@@ -197,23 +213,35 @@ class Optimizer:
                     for ema26_length in ema26_length_range:
                         for ema100_length in ema100_length_range:
                             for fibonacci_retrace in fibonacci_retrace_range:
-                                strategy_params = StrategyParams(bband_length, bband_stddev, ema9_length,
-                                                                 ema26_length, ema100_length, fibonacci_retrace)
+                                strategy_params = StrategyParams(
+                                    bband_length,
+                                    bband_stddev,
+                                    ema9_length,
+                                    ema26_length,
+                                    ema100_length,
+                                    fibonacci_retrace,
+                                )
 
                                 # Calculate the performance metrics using the strategy parameters
-                                performance = self.calculate_performance(symbol, strategy_params)
+                                performance = self.calculate_performance(
+                                    symbol, strategy_params
+                                )
 
                                 # Update the best score and parameters if a better combination is found
-                                if performance['win_rate'] > best_score or (
-                                        performance['win_rate'] == best_score and performance['drawdown'] <
-                                        best_performance['drawdown']):
+                                if performance["win_rate"] > best_score or (
+                                    performance["win_rate"] == best_score
+                                    and performance["drawdown"]
+                                    < best_performance["drawdown"]
+                                ):
                                     best_params = strategy_params
-                                    best_score = performance['win_rate']
+                                    best_score = performance["win_rate"]
                                     best_performance = performance
 
         return best_params
 
-    def calculate_performance(self, symbol: Symbol, strategy_params: StrategyParams) -> dict:
+    def calculate_performance(
+        self, symbol: Symbol, strategy_params: StrategyParams
+    ) -> dict:
         # Implement your logic for calculating the performance metrics (win rate, drawdown, additional statistics) using the given strategy parameters
 
         # Replace the following code with your actual performance calculation
@@ -233,18 +261,20 @@ class Optimizer:
         win_rate = 0.7
         drawdown = 0.1
         additional_stats = {
-            'average_profit': 0.05,
-            'maximum_profit': 0.1,
-            'minimum_profit': 0.01
+            "average_profit": 0.05,
+            "maximum_profit": 0.1,
+            "minimum_profit": 0.01,
         }
 
         return {
-            'win_rate': win_rate,
-            'drawdown': drawdown,
-            'additional_stats': additional_stats,
+            "win_rate": win_rate,
+            "drawdown": drawdown,
+            "additional_stats": additional_stats,
         }
 
-    def report_performance(self, symbol: Symbol, strategy_params: StrategyParams, performance: dict):
+    def report_performance(
+        self, symbol: Symbol, strategy_params: StrategyParams, performance: dict
+    ):
         # Generate a report of the strategy's performance
 
         print(f"Performance Report for Symbol: {symbol.name}")
@@ -253,7 +283,7 @@ class Optimizer:
         print(f"Win Rate: {performance['win_rate']}")
         print(f"Drawdown: {performance['drawdown']}")
         print("Additional Statistics:")
-        for stat_name, stat_value in performance['additional_stats'].items():
+        for stat_name, stat_value in performance["additional_stats"].items():
             print(f"- {stat_name}: {stat_value}")
 
     def visualize_performance(self, symbol: Symbol, performance: dict):
@@ -271,10 +301,12 @@ class Optimizer:
             A bar plot of the additional statistics
 
         """
-        additional_stats = performance['additional_stats']
-        stats_df = pd.DataFrame(additional_stats.values(), index=additional_stats.keys(), columns=['Value'])
+        additional_stats = performance["additional_stats"]
+        stats_df = pd.DataFrame(
+            additional_stats.values(), index=additional_stats.keys(), columns=["Value"]
+        )
 
-        sns.barplot(x=stats_df.index, y=stats_df['Value'])
+        sns.barplot(x=stats_df.index, y=stats_df["Value"])
         plt.title(f"Additional Statistics - {symbol.name}")
         plt.xlabel("Statistics")
         plt.ylabel("Value")
@@ -295,7 +327,9 @@ class SignalGenerator:
     def __init__(self):
         self.optimizer = None
 
-    def generate_signals(self, symbol: Symbol, strategy_params: StrategyParams) -> List[Signal]:
+    def generate_signals(
+        self, symbol: Symbol, strategy_params: StrategyParams
+    ) -> List[Signal]:
         """
         Generates signals for a given symbol based on the strategy parameters.
 
@@ -310,18 +344,26 @@ class SignalGenerator:
 
         for i in range(len(symbol.close)):
             if (
-                    symbol.close[i] > symbol.bband_upper[i]
-                    and symbol.ema9[i] > symbol.ema26[i] > symbol.ema100[i]
-                    and symbol.fibonacci_retrace[i] == strategy_params.fibonacci_retrace
+                symbol.close[i] > symbol.bband_upper[i]
+                and symbol.ema9[i] > symbol.ema26[i] > symbol.ema100[i]
+                and symbol.fibonacci_retrace[i] == strategy_params.fibonacci_retrace
             ):
-                signal = Signal(symbol=symbol, timestamp=symbol.timestamp[i], signal_type=SignalType.BUY)
+                signal = Signal(
+                    symbol=symbol,
+                    timestamp=symbol.timestamp[i],
+                    signal_type=SignalType.BUY,
+                )
                 signals.append(signal)
             elif (
-                    symbol.close[i] < symbol.bband_lower[i]
-                    and symbol.ema9[i] < symbol.ema26[i] < symbol.ema100[i]
-                    and symbol.fibonacci_retrace[i] == strategy_params.fibonacci_retrace
+                symbol.close[i] < symbol.bband_lower[i]
+                and symbol.ema9[i] < symbol.ema26[i] < symbol.ema100[i]
+                and symbol.fibonacci_retrace[i] == strategy_params.fibonacci_retrace
             ):
-                signal = Signal(symbol=symbol, timestamp=symbol.timestamp[i], signal_type=SignalType.SELL)
+                signal = Signal(
+                    symbol=symbol,
+                    timestamp=symbol.timestamp[i],
+                    signal_type=SignalType.SELL,
+                )
                 signals.append(signal)
 
         return signals
@@ -332,7 +374,9 @@ class SignalScanner:
     Scans for trading signals based on market data.
     """
 
-    def __init__(self, market_data_manager: MarketDataManager, signal_generator: SignalGenerator):
+    def __init__(
+        self, market_data_manager: MarketDataManager, signal_generator: SignalGenerator
+    ):
         """
         Initializes the SignalScanner.
 
@@ -355,7 +399,9 @@ class SignalScanner:
 
             for data in market_data:
                 strategy_params = self.optimizer.optimize_strategy_params(data.symbol)
-                signals = self.signal_generator.generate_signals(data.symbol, strategy_params)
+                signals = self.signal_generator.generate_signals(
+                    data.symbol, strategy_params
+                )
 
                 # Update the signal state
                 self.update_signal_state(signals)
@@ -430,7 +476,9 @@ class OptimizerAgent:
             # Code for controlling the optimization scheduling goes here
             # ...
 
-    def is_better_settings(self, strategy_params: StrategyParams, symbol: Symbol) -> bool:
+    def is_better_settings(
+        self, strategy_params: StrategyParams, symbol: Symbol
+    ) -> bool:
         # Evaluate the strategy performance with the current settings
         current_stats = self.evaluate_strategy(symbol, strategy_params)
 
@@ -441,12 +489,15 @@ class OptimizerAgent:
         new_stats = self.evaluate_strategy(symbol, new_strategy_params)
 
         # Compare the stats and determine if the new settings are better
-        if new_stats['win_rate'] > current_stats['win_rate'] and new_stats['drawdown'] < current_stats['drawdown']:
+        if (
+            new_stats["win_rate"] > current_stats["win_rate"]
+            and new_stats["drawdown"] < current_stats["drawdown"]
+        ):
             return True
         else:
             return False
 
-    def evaluate_strategy(self, symbol: Symbol,  params: list) -> dict:
+    def evaluate_strategy(self, symbol: Symbol, params: list) -> dict:
         """
         The evaluate_strategy function is used to evaluate the performance of a strategy.
 
@@ -467,15 +518,17 @@ class OptimizerAgent:
         # Calculate and include additional statistics as needed
         total_trades = symbol.total_trades
         total_profit = symbol.total_profit
-        average_profit_per_trade = total_profit / total_trades if total_trades > 0 else 0.0
+        average_profit_per_trade = (
+            total_profit / total_trades if total_trades > 0 else 0.0
+        )
 
         # Return the statistics
         return {
-            'win_rate': win_rate,
-            'drawdown': drawdown,
-            'total_trades': total_trades,
-            'total_profit': total_profit,
-            'average_profit_per_trade': average_profit_per_trade,
+            "win_rate": win_rate,
+            "drawdown": drawdown,
+            "total_trades": total_trades,
+            "total_profit": total_profit,
+            "average_profit_per_trade": average_profit_per_trade,
             # Include additional statistics as needed
         }
 

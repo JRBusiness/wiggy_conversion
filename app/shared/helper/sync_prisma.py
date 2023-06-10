@@ -131,7 +131,7 @@ def prisma_generator(model: Any) -> str:
                     columns = constraint.columns
                     if len(columns) > 1:
                         columns = (
-                                "{" + ", ".join([str(col.name) for col in columns]) + "}"
+                            "{" + ", ".join([str(col.name) for col in columns]) + "}"
                         )
                     else:
                         columns = str(columns[0].name)

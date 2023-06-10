@@ -67,6 +67,7 @@ DeclarativeBase = declarative_base()
 # )
 #
 
+
 class UserTypeEnum(Enum):
     """
     The UserTypeEnum is used to define the different types of users that can be created.
@@ -188,7 +189,7 @@ class ModelMixin(AllFeaturesMixin):
 
     @classmethod
     def get_owner_context(
-            cls, request: Request, context: BaseModel
+        cls, request: Request, context: BaseModel
     ) -> Tuple[UUID, dict]:
         """
         The get_owner_context function accepts a request and context object as arguments.
@@ -221,7 +222,7 @@ class ModelMixin(AllFeaturesMixin):
 
     @staticmethod
     def check_many_conditions(
-            _or_: Union[list, dict] = None, _and_: list = Union[list, dict]
+        _or_: Union[list, dict] = None, _and_: list = Union[list, dict]
     ):
         """
         The check_many_conditions function checks to see if the conditions are met.
@@ -262,9 +263,9 @@ class ModelMixin(AllFeaturesMixin):
 
     @classmethod
     def build_response(
-            cls: ModelType = None,
-            object_data: Any = None,
-            error: str = None,
+        cls: ModelType = None,
+        object_data: Any = None,
+        error: str = None,
     ) -> BaseResponse:
         """
         The build_response function takes a list of database objects and returns a dictionary with the following structure:
@@ -283,7 +284,7 @@ class ModelMixin(AllFeaturesMixin):
         return BaseResponse(
             success=False,
             error=error
-                  or f"unable to perform crud operation on {cls.__name__ or 'object'}",
+            or f"unable to perform crud operation on {cls.__name__ or 'object'}",
         )
 
     @classmethod
@@ -302,11 +303,11 @@ class ModelMixin(AllFeaturesMixin):
             keys = dict(id=user_lookup.id, username=user_lookup.username)
             keys[
                 filters.get("email") and "email" or filters.get("phone") and "phone"
-                ] = (
-                    filters.get("email")
-                    and user_lookup.email
-                    or filters.get("phone")
-                    and user_lookup.phone
+            ] = (
+                filters.get("email")
+                and user_lookup.email
+                or filters.get("phone")
+                and user_lookup.phone
             )
             return UserClaim()
 
@@ -344,15 +345,15 @@ class ModelMixin(AllFeaturesMixin):
             k: v
             for k, v in kwargs.items()
             if k
-               in [
-                   "id",
-                   "ownerId",
-                   "agentId",
-                   "adminId",
-                   "userId",
-                   "createdByAdminId",
-                   "createdByAgentId",
-               ]
+            in [
+                "id",
+                "ownerId",
+                "agentId",
+                "adminId",
+                "userId",
+                "createdByAdminId",
+                "createdByAgentId",
+            ]
         }
         for key in filters:
             kwargs.pop(key)
@@ -453,16 +454,16 @@ class ModelMixin(AllFeaturesMixin):
                     return results
             if username := kwargs.get("name"):
                 if (
-                        results := cls.where()
-                                .filter(cls.username.ilike(f"%{username}%"))
-                                .all()
+                    results := cls.where()
+                    .filter(cls.username.ilike(f"%{username}%"))
+                    .all()
                 ):
                     return results
             if firstName := kwargs.get("firstName"):
                 if (
-                        results := cls.where()
-                                .filter(cls.firstName.ilike(f"%{firstName}%"))
-                                .all()
+                    results := cls.where()
+                    .filter(cls.firstName.ilike(f"%{firstName}%"))
+                    .all()
                 ):
                     return results
         except Exception as e:
@@ -540,10 +541,10 @@ class DataSeeder:
 
         # loop through models in registry
         for table in sorted(
-                Base.metadata.sorted_tables, key=lambda t: t.name, reverse=True
+            Base.metadata.sorted_tables, key=lambda t: t.name, reverse=True
         ):
             if (
-                    table.name not in self.metadata.tables
+                table.name not in self.metadata.tables
             ):  # or table.name in self.exclude_list:
                 continue
 

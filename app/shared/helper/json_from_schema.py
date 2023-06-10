@@ -3,7 +3,6 @@ from pydantic import BaseModel, parse_file_as
 from faker import Faker
 
 
-
 def generate_fake_data_from_schemas(schema_dir: str) -> dict:
     """
     Given a directory containing Pydantic schema files, this function loads each model
@@ -13,8 +12,12 @@ def generate_fake_data_from_schemas(schema_dir: str) -> dict:
     fake = Faker()
 
     # Get all the .py files in the specified folder
-    file_dir = f"{base_dir}\\" + schema_dir.replace('.', '\\')
-    files = [f for f in os.listdir(file_dir) if os.path.isfile(os.path.join(schema_dir, f)) and "schema" in f]
+    file_dir = f"{base_dir}\\" + schema_dir.replace(".", "\\")
+    files = [
+        f
+        for f in os.listdir(file_dir)
+        if os.path.isfile(os.path.join(schema_dir, f)) and "schema" in f
+    ]
 
     # Load each Pydantic model in the schema and generate fake data for it
     data = {}
@@ -29,5 +32,7 @@ def generate_fake_data_from_schemas(schema_dir: str) -> dict:
 
     return data
 
+
 from settings import base_dir
-generate_fake_data_from_schemas('app.api.user.schema')
+
+generate_fake_data_from_schemas("app.api.user.schema")

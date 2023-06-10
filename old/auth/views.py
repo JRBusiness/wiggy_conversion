@@ -27,7 +27,7 @@ fake_users_db = {
         "id": 1,
         "username": "user1",
         "email": "user1@example.com",
-        "password_hash": "$2b$12$1wfusv5tPw6eW3gXwvqpgu3.nqfYP5lcYmbDxmcI3KkH1A9X7iQcG"  # "password"
+        "password_hash": "$2b$12$1wfusv5tPw6eW3gXwvqpgu3.nqfYP5lcYmbDxmcI3KkH1A9X7iQcG",  # "password"
     }
 }
 
@@ -75,7 +75,9 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     if not user:
         raise HTTPException(status_code=400, detail="Invalid username or password")
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(data={"sub": user.username}, expires_delta=access_token_expires)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
     return {"access_token": access_token, "token_type": "bearer"}
 
 
@@ -88,7 +90,11 @@ async def protected_route(token: str = Depends(oauth2_scheme)):
         if not username:
             raise HTTPException(status_code=401, detail="Invalid authentication token")
         if user := fake_users_db.get(username):
-            return {"user_id": user["id"], "username": user["username"], "email": user["email"]}
+            return {
+                "user_id": user["id"],
+                "username": user["username"],
+                "email": user["email"],
+            }
         else:
             raise HTTPException(status_code=401, detail="User not found")
     except jwt.JWTError as e:

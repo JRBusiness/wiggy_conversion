@@ -18,7 +18,6 @@ class Query(Enumerable):
 
 
 class RedisMixin(JsonModel):
-
     @classmethod
     def filter_expr(cls, **filters: dict) -> list:
         """
@@ -59,6 +58,7 @@ class JsonMixin(EmbeddedJsonModel):
     """
     The JsonMixin class is a class that represents a JSON mixin.
     """
+
 
 #
 # class RedisController(RedisMixin):

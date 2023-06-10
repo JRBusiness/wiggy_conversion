@@ -44,7 +44,7 @@ class ActorState(BaseModel):
 
 class StatsManager:
     def __init__(self):
-        self.engine = create_engine('sqlite:///trade_stats.db')
+        self.engine = create_engine("sqlite:///trade_stats.db")
         Session = sessionmaker(bind=self.engine)
         self.session = Session()
 
@@ -85,14 +85,20 @@ class MarketDataManager:
 
 
 class SignalGenerator:
-    def generate_signals(self, symbol: Symbol, strategy_params: StrategyParams) -> List[Signal]:
+    def generate_signals(
+        self, symbol: Symbol, strategy_params: StrategyParams
+    ) -> List[Signal]:
         # Generate signals for a given symbol based on the strategy parameters
         pass
 
 
 class SignalScanner:
-    def __init__(self, market_data_manager: MarketDataManager, signal_generator: SignalGenerator,
-                 actor_manager: ActorManager):
+    def __init__(
+        self,
+        market_data_manager: MarketDataManager,
+        signal_generator: SignalGenerator,
+        actor_manager: ActorManager,
+    ):
         self.market_data_manager = market_data_manager
         self.signal_generator = signal_generator
         self.actor_manager = actor_manager
@@ -104,7 +110,9 @@ class SignalScanner:
             market_data = self.market_data_manager.fetch_market_data(symbols)
 
             for data in market_data:
-                signals = self.signal_generator.generate_signals(data, self.actor_manager.get_strategy_params(data))
+                signals = self.signal_generator.generate_signals(
+                    data, self.actor_manager.get_strategy_params(data)
+                )
                 # Process signals and take appropriate actions
 
 
@@ -120,7 +128,11 @@ class StrategyOptimizer:
 
     def optimize_symbols(self, symbols: List[Symbol]):
         for _ in symbols:
-            result = minimize(self.optimizer.optimize_strategy_params, x0=[1, 1, 1, 1, 1, 0.5], method='Nelder-Mead')
+            result = minimize(
+                self.optimizer.optimize_strategy_params,
+                x0=[1, 1, 1, 1, 1, 0.5],
+                method="Nelder-Mead",
+            )
             best_params = StrategyParams(**result.x)
             # Take further actions based on the best parameters
 
@@ -136,7 +148,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 executor = ThreadPoolExecutor(max_workers=2)
 executor.submit(signal_scanner.scan_for_signals)
-executor.submit(strategy_optimizer.optimize_symbols, symbols=[
-    Symbol(name='BTCUSDT', timeframe='1h')
-])
-
+executor.submit(
+    strategy_optimizer.optimize_symbols,
+    symbols=[Symbol(name="BTCUSDT", timeframe="1h")],
+)

@@ -7,26 +7,27 @@ from app.webhook.schemas import Actions
 
 
 class Users(ModelMixin):
-    __tablename__ = 'users'
+    __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String, nullable=True)
 
 
 class Symbols(ModelMixin):
-    __tablename__ = 'symbols'
+    __tablename__ = "symbols"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     tv_symbol = Column(String, nullable=True)
     mt5_symbol = Column(String, nullable=True)
     symbol = Column(String, nullable=True)
 
+
 class SymbolSettings(ModelMixin):
-    __tablename__ = 'symbol_settings'
+    __tablename__ = "symbol_settings"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    symbol_id = Column(ForeignKey('symbols.id'), nullable=True)
-    symbol = relationship('Symbols', backref='symbol_settings')
+    symbol_id = Column(ForeignKey("symbols.id"), nullable=True)
+    symbol = relationship("Symbols", backref="symbol_settings")
     timeframe = Column(String, nullable=True)
     bband_length = Column(Integer, nullable=True)
     bband_stddev = Column(Float, nullable=True)
@@ -38,9 +39,8 @@ class SymbolSettings(ModelMixin):
     max_open_trades = Column(Integer, nullable=True)
 
 
-strategy_templates
 class TradeHistory(ModelMixin):
-    __tablename__ = 'trade_history'
+    __tablename__ = "trade_history"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String, nullable=True)
@@ -55,7 +55,6 @@ class TradeHistory(ModelMixin):
     ticket = Column(Integer, nullable=True)
     comment = Column(String, nullable=True)
     magic = Column(Integer, nullable=True)
-
 
     @hybrid_property
     def pnl(self):
@@ -91,7 +90,7 @@ class TradeHistory(ModelMixin):
 
 
 class MarketData(ModelMixin):
-    __tablename__ = 'market_data'
+    __tablename__ = "market_data"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String)
@@ -104,7 +103,7 @@ class MarketData(ModelMixin):
 
 
 class Signal(ModelMixin):
-    __tablename__ = 'signal'
+    __tablename__ = "signal"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String)
@@ -112,8 +111,9 @@ class Signal(ModelMixin):
     signal = Column(String)
     # Include additional columns as needed
 
+
 class StrategyParams(ModelMixin):
-    __tablename__ = 'strategy_params'
+    __tablename__ = "strategy_params"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String)
@@ -126,7 +126,7 @@ class StrategyParams(ModelMixin):
 
 
 class Strategy(ModelMixin):
-    __tablename__ = 'strategy'
+    __tablename__ = "strategy"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String)
@@ -134,9 +134,8 @@ class Strategy(ModelMixin):
     signal = Column(String)
 
 
-
 class Portfolio(ModelMixin):
-    __tablename__ = 'portfolio'
+    __tablename__ = "portfolio"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     broker = Column(String)
@@ -160,18 +159,17 @@ class Portfolio(ModelMixin):
     max_consecutive_wins = Column(Integer)
     max_consecutive_losses = Column(Integer)
 
+
 class StrategyTemplates(ModelMixin):
-    __tablename__ = 'strategy_templates'
+    __tablename__ = "strategy_templates"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String)
     timeframe = Column(String)
-    stategy_id = Column(ForeignKey('strategy.id'), nullable=True)
-    strategy = relationship('Strategy', backref='strategy_templates')
+    stategy_id = Column(ForeignKey("strategy.id"), nullable=True)
+    strategy = relationship("Strategy", backref="strategy_templates")
     template_name = Column(String)
-    params_id = Column(ForeignKey('strategy_params.id'), nullable=True)
-    params = relationship('StrategyParams', backref='strategy_templates')
-    owner_id = Column(ForeignKey('users.id'), nullable=True)
-    owner = relationship('Users', backref='strategy_templates')
-
-
+    params_id = Column(ForeignKey("strategy_params.id"), nullable=True)
+    params = relationship("StrategyParams", backref="strategy_templates")
+    owner_id = Column(ForeignKey("users.id"), nullable=True)
+    owner = relationship("Users", backref="strategy_templates")

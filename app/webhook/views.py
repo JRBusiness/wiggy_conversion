@@ -1,24 +1,28 @@
-import json
+# sourcery skip: raise-specific-error
+"""
+This module contains the webhook views
+"""
+import requests
+from bs4 import BeautifulSoup
+import asyncio
 import re
-from _pydecimal import Decimal
-from types import SimpleNamespace
-from typing import Any, List, Dict, Optional
+from datetime import datetime
+from typing import List, Dict, Optional, Any
 
-import MetaTrader5
-from MetaTrader5 import TradeRequest, SymbolInfo, TradePosition
-from fastapi import FastAPI, HTTPException, APIRouter, Body, params, Depends
-from fastapi.openapi.models import Schema
-from py_linq import Enumerable
-from pydantic import BaseModel, BaseConfig, ValidationError
 import MetaTrader5 as mt5
-from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
-from starlette.requests import Request
+import pytz
+from MetaTrader5 import TradePosition
+from fastapi import APIRouter, Body
 from loguru import logger
+from py_linq import Enumerable
+from pydantic import BaseModel
+from starlette.requests import Request
 
-import settings
 from app.shared.bases.base_responses import BaseResponse
+from app.strategy.lookup_schemas import SignatureModel, EmailModel, parse_email, Email
 from app.webhook.models import TradeHistory
-from app.webhook.schemas import Order, MT5TradeRequest, Actions, TradeHistoryRequest
+from app.webhook.schemas import Order, MT5TradeRequest, Actions
+from settings import Config
 
 router = APIRouter(
     prefix="/webhook",
@@ -36,32 +40,22 @@ if not mt5.terminal_info():
 
 
 class Symbols(BaseModel):
+    __abstract__ = True
     __self__: List["Symbol"]
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.__self__ = self
-
-    def __getitem__(self, item):
-        return self.__self__[item]
-
-    def __iter__(self):
-        return iter(self.__self__)
-
-    def __len__(self):
-        return len(self.__self__)
-
-    def __repr__(self):
-        return repr(self.__self__)
-
-    def __str__(self):
-
-        return str(self.__self__)
+    def __init__(self):
+        super().__init__()
 
     def __contains__(self, item):
         return item in self.__self__
 
     def all(self, symbol: str = None, mt5_symbol: str = None) -> Enumerable:
+        """
+        Get all symbols
+        :param symbol:
+        :param mt5_symbol:
+        :return:
+        """
         if symbol:
             return Enumerable(self.__self__).where(lambda x: x.symbol == symbol)
         elif mt5_symbol:
@@ -74,6 +68,10 @@ class Symbol(BaseModel):
     mt5_symbol: Optional[str]
 
     class Config:
+        """
+        Pydantic configuration
+        """
+
         orm_mode = True
 
     @staticmethod
@@ -87,7 +85,7 @@ class Symbol(BaseModel):
             US30Cash="US30",
             US100Cash="US100",
             JP225Cash="JP225",
-            OILCash="USOIL"
+            OILCash="USOIL",
         )
 
         symbols = mt5.symbols_get()
@@ -110,6 +108,10 @@ class SymbolsMapResponse(BaseResponse):
     response: Symbols
 
     class Config:
+        """
+        Pydantic configuration
+        """
+
         orm_mode = True
 
 
@@ -125,227 +127,221 @@ symbol_map = {
 class TradeManager(BaseModel):
     was_closed: bool = False
 
-    def has_extra_digits(self, symbol):
-        """
-        Check if the symbol has extra digits in MetaTrader5.
-        """
-        symbols = mt5.symbols_get()
-        return next((s.digits > 5 for s in symbols if s.name == symbol), False)
+    open_orders: List[TradePosition] = []
 
-    def normalize_volume(self, symbol, volume):
-        """
-        Normalize the volume for order placement in MetaTrader5.
-        """
-        response = self.has_extra_digits(symbol) and volume * 10 or volume
-        return float(f"{response:.2f}")
+    def close_trades(self, request: MT5TradeRequest, open_orders: List[TradePosition]):
+        """ "
+        Close all open trades
 
-    async def generate_orders(self, request: MT5TradeRequest):
-        open_orders: list[TradePosition] = mt5.positions_get(symbol=request.symbol)
+        """
         for existing_trade in open_orders:
             logger.info(f"Existing trade: {existing_trade}")
             # If an existing trade exists, check to see if the direction needs to be changed
-            if existing_trade.type != MetaTrader5.ORDER_TYPE_BUY if request.type == Actions.BUY else MetaTrader5.ORDER_TYPE_SELL:
+            if existing_trade.type != (
+                request.trade_type == Actions.BUY
+                and mt5.ORDER_TYPE_BUY
+                or request.trade_type == Actions.SELL
+                and mt5.ORDER_TYPE_SELL
+            ):
                 # If the direction has changed, close all existing trades
                 logger.info(
                     f"Existing trade direction "
-                    f"{'buy' if existing_trade.type == 1 else 'sell'} "
-                    f"is different from the new trade direction {request.type}"
+                    f"{'buy' if existing_trade.type == 0 else 'sell'} "
+                    f"is different from the new trade direction {request.trade_type}"
                 )
-
                 logger.info(f"Closing trade {existing_trade.ticket}")
-                signal = mt5.ORDER_TYPE_BUY if request.type == Actions.BUY else mt5.ORDER_TYPE_SELL
-
-                order = dict(
-                    action=mt5.TRADE_ACTION_DEAL,
-                    type=signal,
-                    volume=self.normalize_volume(request.symbol, request.volume),
-                    symbol=existing_trade.symbol,
-                    # price=symbol_info.bid if signal == mt5.ORDER_TYPE_BUY else mt5.symbol_info(existing_trade.symbol).ask,
-                    position=existing_trade.ticket,
-                    order=existing_trade.ticket,
-                    deal=existing_trade.ticket,
-                    magic=123456,
-                    type_filling=mt5.ORDER_FILLING_IOC,
-                    comment="closing position from webhook",
+                order_sent = mt5.Close(
+                    existing_trade.symbol,
+                    ticket=existing_trade.ticket,
+                    comment="close and reverse",
                 )
-                # order['sl'] = existing_trade.price_current
-                order_send = mt5.order_send(order)
-                logger.info(f"Order send result: {order_send}")
-                logger.info(f"Order: {order_send.order}")
-                if order_send.retcode == mt5.TRADE_RETCODE_DONE:
-                    logger.info(f"Order closed: {order_send.order}")
-                if order_send.retcode == mt5.TRADE_RETCODE_DONE:
-                    trade = TradeHistory(
-                        action=Actions.CLOSE,
-                        profit=order_send.profit,
-                        volume=round(self.normalize_volume(order_send.symbol, order_send.volume), 2),
-                        price=order_send.price,
-                        symbol=order_send.symbol,
-                        type=order_send.type,
-                        type_filling=order_send.type_filling,
-                        type_time=order_send.type_time,
-                        comment=order_send.comment,
-                        magic=order_send.magic,
-                        order=order_send.order,
+                logger.info(f"Order send result: {order_sent}")
+                if order_sent:
+                    logger.info(
+                        f"Order closed: {existing_trade.symbol} "
+                        f"at {existing_trade.price_current} "
+                        f"using {existing_trade.volume} volume"
                     )
 
-                    trade.save()
-                    logger.info(f"Trade history created: {trade}")
-                else:
-                    logger.info(f"Order close failed: {order_send.retcode}")
-                    return
+    async def submit_in_out(self, request: MT5TradeRequest):
+        """
+        Submit an in/out trade request
+        :param request:
+        :return:
+        """
+        open_orders: list[TradePosition] = mt5.positions_get(symbol=request.symbol)
+        logger.info(f"Open orders: {open_orders}")
 
-    def new_order(self, trade_data: dict):
-        if not (
-            last_trade := TradeHistory.where(symbol=trade_data['symbol']).first()
-        ):
-            return self.order_8(trade_data=trade_data)
-        if trade_data['type'] == mt5.ORDER_TYPE_BUY:
-            if closed_trade := (last_trade.action == Actions.CLOSE):
-                return self.order_8(trade_data, last_trade)
+        if not open_orders:
+            logger.info("No open orders found")
+            self.submit_normal(request)
+            return
 
-    def order_8(self, trade_data: dict = None, last_trade: int = None):
-        trade_data = MT5TradeRequest(**trade_data)
-        logger.info(f"Last trade was closed: {last_trade}")
+        self.close_trades(request, open_orders)
 
+        logger.info("submitting reverse position")
+        self.submit_normal(request)
+
+    @classmethod
+    def get_prices(cls, trade_data: MT5TradeRequest, factor: float = 0.01):
+        """
+        The get_prices function is used to get the current price of a symbol, as well as the stop loss and take profit prices.
+        The function takes in a trade_data object which contains information about the trade such as symbol, type (buy/sell), etc.
+        It also takes in an optional factor parameter that defaults to 0.01 which is used for calculating volume based on account balance.
+
+        Args:
+            cls: Represent the instance of the class
+            trade_data: MT5TradeRequest: Get the symbol and trade type from the mt5 trade request class
+            factor: float: Determine the percentage of the account balance to use for each trade
+
+        Returns:
+            A tuple of three values:
+
+        """
+        account = mt5.account_info()
+        balance = account.balance
+        symbol_data = mt5.symbol_info(trade_data.symbol)
+        price = (
+            symbol_data.ask if trade_data.trade_type == Actions.BUY else symbol_data.bid
+        )
+        volume = balance / price * factor
+        return price, (price - 100), (price + 100), volume
+
+    def submit_normal(self, trade_data: MT5TradeRequest = None):
+        """
+        Submit an in/out order.
+        """
         logger.info("opening new trade")
-        registry = Registry()
-        order = dict(
+        account = mt5.account_info()
+        balance = account.balance
+        symbol_data = mt5.symbol_info(trade_data.symbol)
+        price = symbol_data and (
+            symbol_data.ask if trade_data.trade_type == Actions.BUY else symbol_data.bid
+        )
+        if not balance or not price:
+            return
+        volume = float(f"{balance / price * 0.02:.2f}")
+        # check if the current symbol is one of the ones with an additional digit
+        # componssate by setting the volume lower for that symbols trades
+        #
+        # first we must get the  current symbols digits from the broker
+        symbol = mt5.symbol_info(trade_data.symbol)
+        if symbol.digits == 3:
+            volume = float(f"{balance / price * 0.002:.2f}")
+        elif symbol.digits == 5:
+            volume = float(f"{balance / price * 0.0002:.2f}")
+        logger.info(f"Volume: {volume}")
+        trade_data.volume = volume
 
+        order = dict(
             action=mt5.TRADE_ACTION_DEAL,
-            type=mt5.ORDER_TYPE_BUY or mt5.ORDER_TYPE_SELL,
-            volume=round(self.normalize_volume(trade_data.symbol, trade_data.volume), 2),
+            type=mt5.ORDER_TYPE_BUY
+            if trade_data.trade_type == Actions.BUY
+            else mt5.ORDER_TYPE_SELL,
+            volume=trade_data.volume,
             symbol=trade_data.symbol,
             price=trade_data.entry_price,
             magic=123456,
             type_filling=mt5.ORDER_FILLING_IOC,
-            comment="opening position from webhook",
+            comment="Entry no Close",
         )
 
         logger.info(f"Executing order: {order}")
         sent_order = mt5.order_send(order)
-        order_ns = SimpleNamespace(**order)
-        ticks = mt5.symbol_info_tick(order_ns.symbol)
-        current_price = ticks and ticks.bid if order_ns.type == mt5.ORDER_TYPE_BUY else ticks and ticks.ask
-        positions = Enumerable(mt5.positions_get())
-        if order_ns.symbol == positions.where(
-                lambda x: x.symbol == order_ns.symbol
-        ).select(
-            lambda x: x.symbol
-        ):
-            self.order_23(positions, order_ns, current_price, sent_order)
+        if not sent_order:
+            logger.info(f"failed  send result: {sent_order}")
+            return
+        logger.info(f"Order send result: {sent_order}")
+        if sent_order.retcode == mt5.TRADE_RETCODE_DONE:
+            #     self.save_historical_trade(trade_data.symbol, sent_order.price, sent_order)
+            #     logger.info(f"Order {sent_order and order} executed successfully")
+            return (
+                sent_order
+                and sent_order.retcode == mt5.TRADE_RETCODE_DONE
+                or BaseResponse()
+            )
 
-        logger.info(f"Order {sent_order and order} executed successfully")
+        logger.info(f"Order {sent_order and order} failed to execute")
+        return BaseResponse
 
-        return sent_order and sent_order.retcode == mt5.TRADE_RETCODE_DONE or BaseResponse()
-
-
-    def order_23(self, positions, order_ns, current_price, sent_order):
+    @classmethod
+    def save_historical_trade(cls, symbol, closed_deal, sent_order):
         """
         This method is used to calculate the profit/loss of the order.
         """
-        formula = lambda cp, ons: (cp - ons.entry_price) * ons.volume
-        pnl = sum(
-            formula(current_price, ons) for ons in positions.where(lambda x: x.symbol == order_ns.symbol))
-        logger.info(f"Profit/Loss: {pnl}")
         history = TradeHistory(
-            symbol=order_ns.symbol,
-            open_time=order_ns.open_time,
-            close_time=order_ns.close_time,
-            entry_price=order_ns.entry_price,
-            exit_price=order_ns.exit_price,
-            profit=pnl,
-            volume=order_ns.volume,
-            trade_type="buy" if order_ns.type == mt5.ORDER_TYPE_BUY else "sell",
+            symbol=symbol,
+            open_time=lambda x: datetime.now(pytz.utc),
+            close_time=None,
+            entry_price=closed_deal.entry_price,
+            exit_price=closed_deal.exit_price,
+            volume=closed_deal.volume,
+            trade_type="buy" if closed_deal.type == mt5.ORDER_TYPE_BUY else "sell",
             ticket=sent_order.order,
             comment=sent_order.comment,
             magic=sent_order.magic,
             action=Actions.OPEN if TradeManager.was_closed else Actions.CLOSE,
-
         )
         history.save()
         logger.info(f"Trade history created: {history}")
-
-    async def open_trade(self, request: MT5TradeRequest):
-
-        request_data = SimpleNamespace(**request.dict())
-        symbol = symbol_map.get(request_data.symbol) or request.symbol
-        trade_data = request.dict(exclude_none=True, exclude_unset=True)
-        trade_data["symbol"] = symbol
-
-        open_orders = Enumerable(mt5.positions_get()).where(lambda x: x.symbol == symbol)
-        account = mt5.account_info()
-        balance = account.balance
-
-        logger.info(f"Balance: {balance}")
-        logger.info(f"Open orders: {open_orders}")
+        return history
 
 
-        symbol_info: SymbolInfo = mt5.symbol_info_tick(symbol)
-
-        bid = (
-                symbol_info and self.normalize_volume(
-            request_data.symbol,
-            symbol_info.bid
-        ) or symbol_info and self.normalize_volume(
-            request_data.symbol,
-            symbol_info.ask
-        ) or self.normalize_volume(
-            request_data.symbol,
-            request_data.entry_price
-        )
-        )
-
-        new_volume = float(f"{trade_data['volume'] / ((balance * 0.25) / bid):.2f}")
-
-        trade_data['volume]'] = new_volume > 0 and new_volume or float(
-            f"{((balance * 0.25) / bid):.2f}") / self.normalize_volume(
-            request_data.symbol, request['entry_price'])
-
-        logger.info(f"Trade data: {trade_data}")
-        return self.new_order(trade_data)
-
-        # else:
-        #     # If the direction is the same, do nothing
-        #     logger.info(f"Already a trade open for symbol {request.symbol} and direction {request.trade_type}")
-        #     return
-
-    async def get_trade_history(self, request: TradeHistoryRequest):
-        # Get the trade history from MetaTrader 5
-        # Return the trade history
-        pass
-
-
-#
-# @router.get("/symbols_map", response_model=SymbolsMapResponse)
-# async def get_symbols_map():
-#     symbols: list = mt5.symbols_get()
-#     symbols_mapped: Symbols = Symbols.parse_obj(
-#         Enumerable(symbols).select(lambda x: Symbol(symbol=x.name, mt5_symbol=x.name)).to_list())
-#     return SymbolsMapResponse(response=symbols_mapped)
 @router.post("/trade_signal", response_model=BaseResponse)
 async def receive_trade_signal(webhook_request=Body(...)):
-    logger.info(f"Received trade signal: {webhook_request}")
+    """
+    Receive trade signal from the webhook
+    :param webhook_request:
+    :return:
+    """
     tm = TradeManager()
+    logger.info(f"Received trade signal: {webhook_request}")
+
     if isinstance(webhook_request, str):
         return
 
     item = webhook_request
-    item = isinstance(item, (str, dict)) and item or item.decode('utf-8')
+    item = isinstance(item, (str, dict)) and item or item.decode("utf-8")
     logger.info(f"Received trade signal: {item}")
     if isinstance(item, dict):
         response = MT5TradeRequest.parse_obj(item)
-        await tm.open_trade(response)
+        await tm.submit_in_out(response)
         return response
 
-    item = re.sub(r'(\d+),(\d+)', r'\1\2', item)
+    item = re.sub(r"(\d+),(\d+)", r"\1\2", item)
     logger.warning(f"Received trade signal: {item}")
     obj = MT5TradeRequest.parse_raw(item)
-    response = await tm.open_trade(obj)
+    response = await tm.submit_in_out(obj)
+    logger.warning(obj.symbol, response)
 
     if response:
         logger.info("Trade signal received and processed successfully.")
-        return BaseResponse(success=True, response="Trade signal received and processed successfully.")
+        return BaseResponse(
+            success=True, response="Trade signal received and processed successfully."
+        )
 
     logger.info("Failed to process trade signal.")
-    return BaseResponse(success=False, response="Failed to process trade signal.")
+    return BaseResponse(response="Failed to process trade signal.")
+
+
+# @router.post("/test")
+# async def test_webhook(request: Request):
+#     # print(request.json())
+#
+#     body = await request.json()
+#     data = SignatureModel(**body)
+#     logger.info(data)
+#     session = requests.Session()
+#     session.headers.update({"Accept": "message/rfc2822"})
+#     session.params = dict({"limit": "10"})
+#     url = data.event_data.storage.url
+#     request = session.get(
+#         url,
+#         auth=("api", Config.api_key),
+#     )
+#     email_main = EmailModel(**request.json())
+#     logger.info(email_main)
+#
+#     response: Email = parse_email(email_main.body_mime)
+#
+#     return BaseResponse(success=True, response=response.code)

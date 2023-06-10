@@ -63,7 +63,6 @@ class SocketServer(Socket):
         return session
 
     def add_user_to_session(self, user: BaseUser, session: Session) -> Session:
-
         user.save()
         session.user = user
         session.save()
@@ -109,7 +108,11 @@ class SocketServer(Socket):
         if not user:
             return
         session_user = session.user
-        user.update(**session_user.dict(exclude={'pk', 'room'}, exclude_none=True, exclude_unset=True))
+        user.update(
+            **session_user.dict(
+                exclude={"pk", "room"}, exclude_none=True, exclude_unset=True
+            )
+        )
         user.save()
         logger.info(f"synced db_user: {user}")
         return user
@@ -119,7 +122,9 @@ class SocketServer(Socket):
         session.save()
         self.save()
 
-    def redis_logout(self, session: Session, emit_message: str = None) -> Optional[bool]:
+    def redis_logout(
+        self, session: Session, emit_message: str = None
+    ) -> Optional[bool]:
         """
         Logs out the user with the given user ID by setting their authToken to None, marking them as offline, and updating their
         session in Redis. Returns True if the logout was successful, False otherwise.
@@ -139,7 +144,9 @@ class SocketServer(Socket):
         logger.info(f"logout: User {session.user} session deleted in redis")
         return True
 
-    def redis_login(self, session_id: str, auth_token: str = None, emit_message: str = None) -> Optional[Session]:
+    def redis_login(
+        self, session_id: str, auth_token: str = None, emit_message: str = None
+    ) -> Optional[Session]:
         """
         The redis_login function is used to log a user into the application.
             It takes in an auth_token as a parameter, and returns either True or False depending on whether or not the login was successful.
@@ -156,16 +163,20 @@ class SocketServer(Socket):
 
         """
         user = User.get(auth_token=auth_token).first()
-        if session := self.sessions and self.query(
-                self.sessions
-        ).where(
-            filter_arg=lambda _session: _session.user and _session.user.auth_token == auth_token
-        ).first_or_default():
+        if (
+            session := self.sessions
+            and self.query(self.sessions)
+            .where(
+                filter_arg=lambda _session: _session.user
+                and _session.user.auth_token == auth_token
+            )
+            .first_or_default()
+        ):
             # self.redis_logout(session)
             logger.info("login: User already logged in")
             return session
         if not user:
-            logger.info('no db user found, have an agent create the user')
+            logger.info("no db user found, have an agent create the user")
             return
         session = self.create_session(session_id, user=user)
         self.change_room(session)
@@ -207,7 +218,11 @@ class SocketServer(Socket):
         if session.user.room.name == new_room:
             return
 
-        room = self.rooms and self.query(self.rooms).where(name=new_room).first() or self.create_room(new_room)
+        room = (
+            self.rooms
+            and self.query(self.rooms).where(name=new_room).first()
+            or self.create_room(new_room)
+        )
         room.name not in [x.name for x in self.rooms] and self.rooms.append(room)
         self.save()
         session.user.room = room
@@ -238,7 +253,9 @@ class SocketServer(Socket):
         return room
 
     def enter_room(self, session_id):
-        session = self.sessions and self.query(self.sessions).where(id=session_id).first()
+        session = (
+            self.sessions and self.query(self.sessions).where(id=session_id).first()
+        )
         self.change_room(session)
         session.save()
         self.save()

@@ -11,16 +11,12 @@ class ModelMixin(AllFeaturesMixin):
     __abstract__ = True
 
 
-
-
-
 class TradeStats(Base, ModelMixin):
-    __tablename__ = 'trade_stats'
+    __tablename__ = "trade_stats"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String)
     profit_loss = Column(Float)
-
 
     @hybrid_property
     def win_rate(self):
@@ -33,9 +29,8 @@ class TradeStats(Base, ModelMixin):
         return 0.0
 
 
-
 class TradeHistory(Base):
-    __tablename__ = 'trade_history'
+    __tablename__ = "trade_history"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String)
@@ -47,7 +42,7 @@ class TradeHistory(Base):
 
 
 class MarketData(Base):
-    __tablename__ = 'market_data'
+    __tablename__ = "market_data"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String)
@@ -60,7 +55,7 @@ class MarketData(Base):
 
 
 class OptimizationParams(Base):
-    __tablename__ = 'optimization_params'
+    __tablename__ = "optimization_params"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String)
@@ -71,12 +66,11 @@ class OptimizationParams(Base):
     ema100_length = Column(Integer)
     fibonacci_retrace = Column(Float)
 
-
     # Include additional columns as needed
 
 
 class OptimizationStats(Base, ModelMixin):
-    __tablename__ = 'optimization_stats'
+    __tablename__ = "optimization_stats"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String)
@@ -85,9 +79,8 @@ class OptimizationStats(Base, ModelMixin):
     # Include additional columns as needed
 
 
-
 class MT5TradeHistory(Base):
-    __tablename__ = 'mt5_trade_history'
+    __tablename__ = "mt5_trade_history"
 
     ticket = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String)
@@ -111,4 +104,3 @@ class MT5TradeHistory(Base):
 
 
 # Additional models for MT5 broker-specific data can be added here
-
