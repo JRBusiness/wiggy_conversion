@@ -16,8 +16,8 @@ from tqdm import tqdm
 logger.configure(
     handlers=[
         dict(sink=lambda msg: tqdm.write("", end=""), format="\n{message}"),
-        dict(sink="logs/strategy.log", enqueue=True, rotation="500 MB", encoding="utf-8", retention="10 days"),
-        dict(sink=sys.stdout, level="WARNING")
+        dict(sink="logs/strategy.log", encoding="utf-8", retention="10 days"),
+        dict(sink=sys.stdout, level="DEBUG", backtrace=True, diagnose=True)
     ]
 
 )
@@ -91,11 +91,6 @@ class MT5Strategy(BaseModel):
     """
     This class is the base class for all strategies
     """
-
-    class Config(BaseConfig):
-        arbitrary_types_allowed = True
-        extra = Extra.allow
-
     symbol: str = Field(default=None, description="Symbol to trade")
     lot_size: float = Field(default=None, description="Lot size to trade")
     timeframe: str = Field(default=None, description="Timeframe to trade")
@@ -104,6 +99,11 @@ class MT5Strategy(BaseModel):
     df: pd.DataFrame = Field(default=None, description="Dataframe containing the data for the strategy")
     position: str = Field(default=None, description="Position of the strategy")
     count: int = Field(default=None, description="Count of the strategy")
+
+
+    class Config(BaseConfig):
+        arbitrary_types_allowed = True
+        extra = Extra.allow
 
     def __new__(cls, *args, **kwargs):
         """
@@ -114,8 +114,7 @@ class MT5Strategy(BaseModel):
             # logger.info(f"Setting {key} to {value}")
         return super().__new__(cls)
 
-    @classmethod
-    def fetch_data(cls: "MT5Strategy") -> pd.DataFrame:
+    def fetch_data(self) -> pd.DataFrame:
         """
         The fetch_data function is used to fetch data from the MetaTrader 5 API.
 
@@ -127,39 +126,42 @@ class MT5Strategy(BaseModel):
 
 
         """
-        logger.info(cls)
+        logger.info(self)
 
-        logger.info(cls.symbol, cls.timeframe, cls.start_time, cls.end_time)
+        logger.info(self.symbol, self.timeframe, self.start_time, self.end_time)
         timezone = pytz.timezone("Etc/UTC")
-        utc_from = cls.start_time.replace(tzinfo=timezone)
-        utc_to = cls.end_time.replace(tzinfo=timezone)
+        utc_from = self.start_time.replace(tzinfo=timezone)
+        utc_to = self.end_time.replace(tzinfo=timezone)
 
         try:
-            rates = mt5.copy_rates_range(cls.symbol, mt5.TIMEFRAME_M5, utc_from, utc_to)
-            if not len(rates):
-                rates = mt5.copy_rates_from(cls.symbol, mt5.TIMEFRAME_M5, utc_from, 100)
-                logger.info(rates)
-
-            if not len(rates):
-                logger.info(mt5.last_error())
-                raise NoTickDataException()
-
-            df = pd.DataFrame(rates, columns=['time', 'open', 'high', 'low', 'close', 'volume']).set_index('time')
-            df.index = pd.to_datetime(df.index, unit='s')
-            df.columns = ['open', 'high', 'low', 'close', 'volume']
-            df['symbol'] = cls.symbol
-            logger.info(f"Data fetched for {df['symbol'] }")
-            df['lot_size'] = cls.lot_size
-            df['timeframe'] = cls.timeframe
-            df['start_time'] = cls.start_time
-            df['end_time'] = cls.end_time
-            logger.info(f"Dataframe shape: {df.shape}")
-            logger.info(f"Dataframe head: {df.head(5)}")
-            return df
-
+            return self.fetch_range(utc_from, utc_to)
         except Exception as e:
             logger.error(f"copy_rates_range() failed, error code={mt5.last_error()}")
             logger.error(e)
+
+
+    def fetch_range(self, utc_from: datetime, utc_to: datetime) -> pd.DataFrame:
+        rates = mt5.copy_rates_range(self.symbol, mt5.TIMEFRAME_M5, utc_from, utc_to)
+        if not len(rates):
+            rates = mt5.copy_rates_from(self.symbol, mt5.TIMEFRAME_M5, utc_from, 100)
+            logger.info(rates)
+
+        if not len(rates):
+            logger.info(mt5.last_error())
+            raise NoTickDataException()
+
+        df = pd.DataFrame(rates, columns=['time', 'open', 'high', 'low', 'close', 'volume']).set_index('time')
+        df.index = pd.to_datetime(df.index, unit='s')
+        df.columns = ['open', 'high', 'low', 'close', 'volume']
+        df['symbol'] = self.symbol
+        logger.info(f"Data fetched for {df['symbol'] }")
+        df['lot_size'] = self.lot_size
+        df['timeframe'] = self.timeframe
+        df['start_time'] = self.start_time
+        df['end_time'] = self.end_time
+        logger.info(f"Dataframe shape: {df.shape}")
+        logger.info(f"Dataframe head: {df.head(5)}")
+        return df
 
     # def scan_market(cls):
     #     """
@@ -274,16 +276,28 @@ def split(df, chunk_size):
 
 # Run the strategy on a single symbol
 mt5.initialize()
+symbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'USDCAD', 'AUDUSD', 'NZDUSD']
 # Run the market scanner and execute the strategy on all qualified symbols
-qualified_symbols: List[MT5Strategy] = list(MT5Strategy.scan_market())
-MT5Strategy.multiprocess_data(qualified_symbols, 500)
+
+def get_symbol(symbol: str) -> pd.DataFrame:
+    data = MT5Strategy(
+        symbol=symbol,
+        lot_size=0.01,
+        timeframe=mt5.TIMEFRAME_M5,
+        start_time=datetime(2023, 1, 1),
+        end_time=datetime(2023, 1, 2)
+    )
+    return data.fetch_data()
+
+qualified_symbols: List[pd.DataFrame] = [get_symbol(symbol) for symbol in symbols]
 strategies = []
 for symbol in qualified_symbols:
 
     item = mt5.symbol_info(symbol.symbol)
     point = item.point
     # print(symbol.symbol, symbol.df.close.iloc[-1], point)
-    run_analysis(symbol.df, point_value=point)
+    logger.info(f"{symbol.symbol} {point}")
+    run_analysis(symbol.df, point_value=point, show_plot=True)
 
 
 # logger.info(f"Qualified symbols: {qualified_symbols}")

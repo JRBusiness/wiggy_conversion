@@ -53,7 +53,7 @@ def run_analysis(
     bar_limit = 1000
 
     # check if the dataframe is empty
-    if candle_data.size <= 0:
+    if not candle_data or candle_data.size <= 0:
         logger.info("Dataframe is empty")
         return
 
@@ -138,3 +138,11 @@ def plot_data(candle_data):
 
     # show the plot
     plt.show()
+
+
+if __name__ == "__main__":
+    for symbol in qualified_symbols:
+        item = mt5.symbol_info(symbol.symbol)
+        point = item.point
+        # print(symbol.symbol, symbol.df.close.iloc[-1], point)
+        run_analysis(symbol.df, point_value=point)

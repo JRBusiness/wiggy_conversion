@@ -1,3 +1,6 @@
+from datetime import datetime
+
+import pytz
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
@@ -44,7 +47,7 @@ class TradeHistory(ModelMixin):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String, nullable=True)
-    open_time = Column(DateTime, nullable=True)
+    open_time = Column(DateTime, nullable=True, default=lambda: datetime.now(pytz.utc))
     close_time = Column(DateTime, nullable=True)
     action = Column(String, nullable=True)
     entry_price = Column(Float, nullable=True)

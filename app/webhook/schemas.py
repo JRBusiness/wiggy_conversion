@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Optional, List, Dict, Union
 
 import MetaTrader5 as mt5
 import sentry_sdk
@@ -16,10 +16,10 @@ sentry_sdk.init()
 
 
 # Request model for opening a trade in MT5
-class TradeRequest(BaseModel):
-    symbol: str
-    trade_type: str
-    entry_price: float
+# class TradeRequest(BaseModel):
+#     symbol: str
+#     trade_type: str
+#     entry_price: float
 
 
 class WebhookRequest(BaseModel):
@@ -262,3 +262,51 @@ class TradeHistoryRequest(BaseModel):
     volume: Optional[float]
     action: Optional[str]
     order: Optional[Order]
+
+
+class ToItem(BaseModel):
+    address: str
+    name: str
+
+
+class FromItem(BaseModel):
+    address: str
+    name: str
+
+
+class Headers(BaseModel):
+    received: List[str]
+    x_mailsac_inbound_version: str = Field(..., alias='x-mailsac-inbound-version')
+    dkim_signature: str = Field(..., alias='dkim-signature')
+    x_google_dkim_signature: str = Field(..., alias='x-google-dkim-signature')
+    x_gm_message_state: str = Field(..., alias='x-gm-message-state')
+    x_google_smtp_source: str = Field(..., alias='x-google-smtp-source')
+    x_received: str = Field(..., alias='x-received')
+    mime_version: str = Field(..., alias='mime-version')
+    from_: str = Field(..., alias='from')
+    date: str
+    message_id: str = Field(..., alias='message-id')
+    subject: str
+    to: str
+    content_type: str = Field(..., alias='content-type')
+
+
+class EmailModel(JsonModel):
+    _id: Optional[str] = None
+    account_id: Optional[str] = Field(None, alias='accountId')
+    to: Optional[List[ToItem]] = None
+    from_: Optional[List[FromItem]] = Field(None, alias='from')
+    subject: Optional[str] = None
+    inbox: Optional[str] = None
+    original_inbox: Optional[str] = Field(None, alias='originalInbox')
+    domain: Optional[str] = None
+    received: Optional[str] = None
+    raw: Optional[str] = None
+    size: Optional[int] = None
+    rtls: Optional[bool] = None
+    ip: Optional[str] = None
+    headers: Optional[Headers] = None
+    text: Optional[str] = None
+    html: Optional[str] = None
+    via: Optional[str] = None
+    x_forwarded_for: Optional[str] = Field(None, alias='x-forwarded-for')
