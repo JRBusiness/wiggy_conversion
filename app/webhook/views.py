@@ -69,19 +69,19 @@ class TradeManager(BaseModel):
         mt5_request = None
         if position.type in [mt5.ORDER_TYPE_BUY, mt5.ORDER_TYPE_SELL]:
             info = cls.get_symbol_info(position.symbol)
-            order_request = dict(
-                action=mt5.TRADE_ACTION_DEAL,
-                symbol=position.symbol,
-                volume=position.volume,
-                price=mt5.ORDER_TYPE_BUY and info.ask or info.bid,
-                comment=comment,
-                ticket=position.ticket,
-                type=mt5.ORDER_TYPE_SELL if position.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY,
-                time_type=mt5.ORDER_TIME_GTC,
-                type_filling=mt5.ORDER_FILLING_IOC,
-            )
-            logger.info(f"Order request: {order_request}")
-            mt5_request = mt5.order_send(order_request)
+            # order_request = dict(
+            #     action=mt5.TRADE_ACTION_DEAL,
+            #     symbol=position.symbol,
+            #     volume=position.volume,
+            #     price=mt5.ORDER_TYPE_BUY and info.bid or info.ask,
+            #     comment=comment,
+            #     type=mt5.ORDER_TYPE_SELL if position.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY,
+            #     time_type=mt5.ORDER_TIME_GTC,
+            #     type_filling=mt5.ORDER_FILLING_IOC,
+            # )
+            mt5.Close(position.symbol)
+            # logger.info(f"Order request: {order_request}")
+            # mt5_request = mt5.order_send(order_request)
 
         if mt5_request is None:
             logger.error("Failed to send order request")
@@ -288,7 +288,7 @@ async def receive_trade_signal(webhook_request=Body(...)):
         response = MT5TradeRequest.parse_obj(item)
         response.symbol = symbol_map.get(response.symbol, response.symbol)
         _tm.submit_in_out(response)
-        return response
+        return BaseResponse(success=True, response=response)
 
     item = re.sub(r"(\d+),(\d+)", r"\1\2", item)
     logger.warning(f"Received trade signal: {item}")
@@ -299,7 +299,7 @@ async def receive_trade_signal(webhook_request=Body(...)):
     except ValidationError as e:
         logger.warning("Failed to parse trade signal.")
         logger.debug(f"Error: {e}")
-        return BaseResponse(error="Failed to parse trade signal.")
+        return BaseResponse(success=False, error="Failed to parse trade signal.")
 
     response = _tm.submit_in_out(obj)
     logger.warning(obj.symbol, response)
@@ -311,4 +311,6 @@ async def receive_trade_signal(webhook_request=Body(...)):
         )
 
     logger.info("Failed to process trade signal.")
-    return BaseResponse(error="Failed to process trade signal.")
+    return BaseResponse(success=False, error="Failed to process trade signal.")
+
+

@@ -7,9 +7,6 @@ from starlette.responses import RedirectResponse
 
 from app.shared.bases.base_model import ModelMixin
 from app.webhook.views import router as webhook_router
-"""
-@author: Kuro
-"""
 from fastapi_sqlalchemy import DBSessionMiddleware, db
 from settings import Config
 
@@ -46,7 +43,7 @@ app = FastAPI()
 
 sentry_sdk.init(
     traces_sample_rate=1.0,
-    dsn="https://79c131c1546f4f96b8da5fae63b856d9@o4505270399664128.ingest.sentry.io/4505270401040384",
+    dsn="https://2b423e58b39c41eeb25db4c33b9203eb@o1351112.ingest.sentry.io/4505433874235392",
     max_breadcrumbs=100,
     debug=True,
     environment="development",

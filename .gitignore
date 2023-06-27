@@ -1,0 +1,9 @@
+*.pyc
+*.logs
+*.log
+.idea/*
+.git/*
+*.xml
+*.iml
+.idea/misc.xml
+.idea/wiggy_conversion.iml
