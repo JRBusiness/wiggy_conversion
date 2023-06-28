@@ -7,7 +7,7 @@ import time
 from typing import List
 
 import MetaTrader5 as mt5
-from MetaTrader5 import TradeDeal, TradePosition, symbol_info_tick
+from MetaTrader5 import TradeDeal, TradePosition
 from fastapi import APIRouter, Body
 from loguru import logger
 from py_linq import Enumerable
@@ -31,7 +31,6 @@ if not mt5.terminal_info():
     error = Exception("Failed to connect to MetaTrader 5 terminal")
     raise error
 
-
 symbol_map = {
     "US500": "US500Cash",
     "US30": "US30Cash",
@@ -54,12 +53,16 @@ class TradeManager(BaseModel):
         """
         Get symbol info
         """
-        for _ in range(10):
-            info = symbol_info_tick(symbol)
-            if info is None:
-                time.sleep(0.1)
-                return None
+        try:
+            info = mt5.symbol_info(symbol)
+            if not info or not info.ask or not info.bid:
+                info = mt5.symbol_info_tick(symbol)
+            if not info or not info.ask or not info.bid:
+                exception =  Exception(f"Failed to get symbol info for {symbol}")
+                raise exception
             return info
+        except Exception as e:
+            logger.error(f"Error getting symbol info: {e}")
 
     @classmethod
     def close_all(cls, position, *, comment=None):
@@ -101,10 +104,7 @@ class TradeManager(BaseModel):
         """
         logger.info(f"Attempting to close trades for symbol {request.symbol}")
         for existing_trade in open_orders:
-            if existing_trade.type != (
-                request.trade_type == Actions.BUY and mt5.ORDER_TYPE_BUY
-                or request.trade_type == Actions.SELL and mt5.ORDER_TYPE_SELL
-            ):
+            if existing_trade.type != request.trade_type:
                 logger.info(
                     f"Existing trade direction "
                     f"{'buy' if existing_trade.type == mt5.ORDER_TYPE_BUY else 'sell'} "
@@ -161,11 +161,18 @@ class TradeManager(BaseModel):
             else mt5.ORDER_TYPE_SELL_STOP,
             volume=volume,
             symbol=trade_data.symbol,
-            price=price,
-            stoplimit=price + 0.01,
+            price=cls.round_10_cents(price),
+            stoplimit=cls.round_10_cents(price + 0.01),
             magic=1337,
             type_filling=mt5.ORDER_FILLING_IOC,
             comment="New position",
+        )
+
+    @classmethod
+    def build_remove_request(cls, trade_data):
+        return dict(
+            action=mt5.TRADE_ACTION_REMOVE,  # action type
+            order=trade_data.ticket,
         )
 
     @classmethod
@@ -202,12 +209,12 @@ class TradeManager(BaseModel):
         """
         self.open_orders = mt5.positions_get(symbol=request.symbol)
         if existing_trade := Enumerable(self.open_orders).first_or_default(
-            lambda x: x.symbol == request.symbol
+                lambda x: x.symbol == request.symbol
         ):
             logger.info("Existing trades found")
             if existing_trade.type != (
-                request.trade_type == Actions.BUY and mt5.ORDER_TYPE_BUY
-                or request.trade_type == Actions.SELL and mt5.ORDER_TYPE_SELL
+                    request.trade_type == Actions.BUY and mt5.ORDER_TYPE_BUY
+                    or request.trade_type == Actions.SELL and mt5.ORDER_TYPE_SELL
             ):
                 logger.info("Closing existing trades and reversing position")
                 self.close_symbol_trades(request, [existing_trade])
@@ -216,7 +223,12 @@ class TradeManager(BaseModel):
                 return
         else:
             logger.info("No open orders found")
-
+        pending_orders = mt5.orders_get(symbol=request.symbol)
+        if pending_orders:
+            for order in pending_orders:
+                pending_request = self.build_remove_request(order)
+                logger.info(f"Removing pending order on symbol {order.symbol}")
+                mt5.order_send(pending_request)
         open_orders = mt5.positions_get(symbol=request.symbol)
         if len(open_orders) >= Config.MAX_TRADES:
             logger.error("Maximum number of active trades reached")
@@ -226,13 +238,18 @@ class TradeManager(BaseModel):
         return self.submit_normal(request)
 
     @classmethod
+    def round_10_cents(cls, price: float):
+        rounded_price = round(price * 100) / 100
+        return float("{:.3f}".format(rounded_price))
+
+    @classmethod
     def submit_normal(cls, trade_data: MT5TradeRequest = None):
         """
         Submit normal
         """
         logger.info(f"Attempting to open new trade for symbol {trade_data.symbol}")
         account, balance = cls.get_account()
-        symbol_data = mt5.symbol_info(trade_data.symbol)
+        symbol_data = cls.get_symbol_info(trade_data.symbol)
         price = symbol_data and (
             symbol_data.ask
             if trade_data.trade_type == Actions.BUY
@@ -245,10 +262,10 @@ class TradeManager(BaseModel):
         volume = cls.calculate_volume(trade_data.symbol, balance, price)
         if volume <= 0.1:
             logger.info(f"Volume is negative: {volume}")
-            volume = 1
+            volume = 1.00
         if volume >= 10:
             logger.info(f"Volume is too high: {volume}")
-            volume = 1
+            volume = 1.00
         logger.info(f"Volume: {volume}")
 
         request = cls.build_request(trade_data, price, volume)
@@ -256,9 +273,11 @@ class TradeManager(BaseModel):
         logger.info(f"Executing order: {request}")
         sent_order = mt5.order_send(request)
 
+
         if not sent_order:
-            logger.info(f"Failed to send order: {request}")
-            return BaseResponse()
+            _error = mt5.last_error()
+            logger.info(f"Failed to send order: {_error}")
+            return BaseResponse(error=_error)
 
         logger.info(f"Order send result: {sent_order}")
         if sent_order.retcode == mt5.TRADE_RETCODE_DONE:
@@ -312,5 +331,3 @@ async def receive_trade_signal(webhook_request=Body(...)):
 
     logger.info("Failed to process trade signal.")
     return BaseResponse(success=False, error="Failed to process trade signal.")
-
-
