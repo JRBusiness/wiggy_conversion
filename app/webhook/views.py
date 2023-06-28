@@ -223,8 +223,7 @@ class TradeManager(BaseModel):
                 return
         else:
             logger.info("No open orders found")
-        pending_orders = mt5.orders_get(symbol=request.symbol)
-        if pending_orders:
+        if pending_orders := mt5.orders_get(symbol=request.symbol):
             for order in pending_orders:
                 pending_request = self.build_remove_request(order)
                 logger.info(f"Removing pending order on symbol {order.symbol}")
