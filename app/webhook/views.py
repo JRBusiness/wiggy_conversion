@@ -150,15 +150,22 @@ class TradeManager(BaseModel):
         return round(volume, 2) if volume > 0.01 else 0.01
 
     @classmethod
-    def build_request(cls, trade_data: MT5TradeRequest, price: float, volume: float) -> dict:
+    def build_request(cls, trade_data: MT5TradeRequest, price: float, volume: float, trade_type: str  = 'stop') -> dict:
         """
         Build request
         """
+        trade_type_data = {}
+        if trade_type == 'market':
+            trade_type_data = dict(
+                action = mt5.TRADE_ACTION_DEAL,
+                type = mt5.ORDER_TYPE_BUY if trade_data.trade_type == Actions.BUY else mt5.ORDER_TYPE_SELL,
+            )
+        elif trade_type == 'stop':
+            trade_type_data = dict(
+                action = mt5.TRADE_ACTION_PENDING,
+                type = mt5.ORDER_TYPE_BUY_STOP if trade_data.trade_type == Actions.BUY else mt5.ORDER_TYPE_SELL_STOP,
+            )
         return dict(
-            action=mt5.TRADE_ACTION_PENDING,
-            type=mt5.ORDER_TYPE_BUY_STOP
-            if trade_data.trade_type == Actions.BUY
-            else mt5.ORDER_TYPE_SELL_STOP,
             volume=volume,
             symbol=trade_data.symbol,
             price=cls.round_10_cents(price),
@@ -166,7 +173,7 @@ class TradeManager(BaseModel):
             magic=1337,
             type_filling=mt5.ORDER_FILLING_IOC,
             comment="New position",
-        )
+        ) | trade_type_data
 
     @classmethod
     def build_remove_request(cls, trade_data):
@@ -207,6 +214,7 @@ class TradeManager(BaseModel):
         """
         Submit in out
         """
+        order_type = 'stop'
         self.open_orders = mt5.positions_get(symbol=request.symbol)
         if existing_trade := Enumerable(self.open_orders).first_or_default(
                 lambda x: x.symbol == request.symbol
@@ -218,23 +226,28 @@ class TradeManager(BaseModel):
             ):
                 logger.info("Closing existing trades and reversing position")
                 self.close_symbol_trades(request, [existing_trade])
+                order_type = 'market'
+
             else:
                 logger.info("Existing trades are in the same direction as the new trade request. No action needed.")
                 return
         else:
-            logger.info("No open orders found")
+            logger.info(f"No open orders found for {request.symbol}")
+
+
         if pending_orders := mt5.orders_get(symbol=request.symbol):
             for order in pending_orders:
                 pending_request = self.build_remove_request(order)
                 logger.info(f"Removing pending order on symbol {order.symbol}")
                 mt5.order_send(pending_request)
-        open_orders = mt5.positions_get(symbol=request.symbol)
-        if len(open_orders) >= Config.MAX_TRADES:
+        open_positions = mt5.positions_get(symbol=request.symbol)
+        open_orders = mt5.orders_get(symbol=request.symbol)
+        if len(open_positions) + len(open_orders) >= Config.MAX_TRADES:
             logger.error("Maximum number of active trades reached")
             return
 
         logger.info("Submitting new position")
-        return self.submit_normal(request)
+        return self.submit_trade(request, trade_type=order_type)
 
     @classmethod
     def round_10_cents(cls, price: float):
@@ -242,11 +255,12 @@ class TradeManager(BaseModel):
         return float("{:.3f}".format(rounded_price))
 
     @classmethod
-    def submit_normal(cls, trade_data: MT5TradeRequest = None):
+    def submit_trade(cls, trade_data: MT5TradeRequest = None, trade_type: str = 'stop'):
         """
         Submit normal
         """
-        logger.info(f"Attempting to open new trade for symbol {trade_data.symbol}")
+        trade_type == 'stop' and logger.info(f"Attempting to open new trade for symbol {trade_data.symbol}") or \
+        logger.info(f"Attempting to close and reverse {trade_data.symbol} at market price")
         account, balance = cls.get_account()
         symbol_data = cls.get_symbol_info(trade_data.symbol)
         price = symbol_data and (
@@ -267,7 +281,7 @@ class TradeManager(BaseModel):
             volume = 1.00
         logger.info(f"Volume: {volume}")
 
-        request = cls.build_request(trade_data, price, volume)
+        request = cls.build_request(trade_data, price, volume, trade_type)
 
         logger.info(f"Executing order: {request}")
         sent_order = mt5.order_send(request)
