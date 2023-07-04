@@ -1,12 +1,8 @@
-import logging
+
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import Message
-from app.api.history.models import ActionHistory
-
-logger = logging.getLogger("RequestLoggingMiddleware")
-logger.setLevel(logging.DEBUG)
-logger.addHandler(logging.StreamHandler())
+from app import logger
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
@@ -43,8 +39,8 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             for action in request.url.path.split("/")
             for part in action.split("_")
         ):
-            logger.info(f"{request.method} {request.url.path}")
-            logger.info(f"payload: {json_body}")
+            logger.debug(f"{request.method} {request.url.path}")
+            logger.debug(f"payload: {json_body}")
             data = dict(
                 ip=request.client.host, path=request.url.path, newValueJson=json_body
             )
@@ -52,9 +48,9 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             try:
                 request.user.id
             except Exception:
-                logger.info("User not found")
+                logger.debug("User not found")
                 return await call_next(request)
-            logger.info(f"User: {request.user.id}, AuthInfo: {request.auth.scopes}")
+            logger.debug(f"User: {request.user.id}, AuthInfo: {request.auth.scopes}")
             if (
                 request.user.id == "44c6b702-6ea5-4872-b140-3b5e0b22ead6"
                 or request.user.admin

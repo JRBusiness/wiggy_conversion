@@ -145,7 +145,7 @@ def train():
 
         n_features = len(ohlc_data.columns)
         model = build_model(n_days, n_features)
-        logger.info(f"Training model on {timeframe} data...")
+        logger.debug(f"Training model on {timeframe} data...")
         model.fit(x_train, y_train, validation_data=(x_test, y_test), batch_size=8, epochs=50, verbose=1)
         test_score = model.evaluate(x_test, y_test, verbose=0)
 
@@ -153,11 +153,11 @@ def train():
             best_model = model
             best_score = test_score
             best_timeframe = timeframe
-            logger.info(
+            logger.debug(
                 f"New best model found for {best_timeframe} with score {best_score}"
             )
             model.save_weights(f'lstm_{timeframe}.h5')
-    logger.info(f"Best model was for {best_timeframe} with score {best_score}")
+    logger.debug(f"Best model was for {best_timeframe} with score {best_score}")
 
 def predict_60(model, data_lstm, n_days, close_scaler) -> Sequential:
     y_test, y_train, scaler, x_test, x_train, n_features, train_size, x_train_dates, x_test_dates, close_scalar = get_training_data(60)
@@ -165,7 +165,7 @@ def predict_60(model, data_lstm, n_days, close_scaler) -> Sequential:
     try:
         model.load_weights('lstm.h5')
     except Exception:
-        logger.info("No model found, training a new one")
+        logger.debug("No model found, training a new one")
         model.fit(x_train, y_train, validation_data=(x_test, y_test), batch_size=8, epochs=50, verbose=1)
         model.save_weights('lstm.h5')
 
@@ -182,13 +182,13 @@ def predict_60(model, data_lstm, n_days, close_scaler) -> Sequential:
     last_60_days_np = np.reshape(last_60_days[-1], (1, n_days, n_features))
     pred_price = model.predict(last_60_days_np)[0][0]
     pred_price = scaler.inverse_transform(pred_price.reshape(-1, 1))[0][0]
-    logger.info(f"Predicted price: {pred_price:.2f}")
+    logger.debug(f"Predicted price: {pred_price:.2f}")
 
     # Evaluate model
     train_score = model.evaluate(x_train, y_train, verbose=0)
     test_score = model.evaluate(x_test, y_test, verbose=0)
-    logger.info(f"Train score: {train_score:.2f}")
-    logger.info(f"Test score: {test_score:.2f}")
+    logger.debug(f"Train score: {train_score:.2f}")
+    logger.debug(f"Test score: {test_score:.2f}")
 
     # Plot the result with plotly in dark mode
     fig = make_subplots(rows=2, cols=1)
@@ -234,7 +234,7 @@ if __name__ == "__main__":
 
     model = predict_60(model, data_lstm, 60, close_scaler)
 
-    logger.info(model.summary())
+    logger.debug(model.summary())
     #model.fit(x_train, y_train, validation_data=(x_test, y_test), batch_size=16, epochs=50, verbose=1)
 
     #model.save_weights('lstm.h5')

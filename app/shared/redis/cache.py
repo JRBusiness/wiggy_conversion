@@ -30,7 +30,7 @@ class RedisCache:
             try:
                 model = decode_model(in_cache)
             except TypeError as e:
-                logger.info(e)
+                logger.debug(e)
                 model = None
             return model
         return None
@@ -60,5 +60,5 @@ class RedisCache:
         """
         cache_data: list = await self.check_cache(cache_key)
         if cache_data:
-            logger.info(f"fetching {cache_key} from cache")
+            logger.debug(f"fetching {cache_key} from cache")
             return cache_data

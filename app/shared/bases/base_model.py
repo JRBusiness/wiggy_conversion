@@ -45,18 +45,6 @@ from app.shared.schemas.page_schema import PagedResponse
 from settings import Config
 from settings import base_dir
 
-logging.basicConfig(
-    filename=f"{base_dir}/logs/base_models.log",
-    level=logging.DEBUG,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    filemode="a",
-    force=True,
-)
-logger = logging.getLogger("base_model")
-logger.addHandler(logging.StreamHandler())
-logger.setLevel(logging.DEBUG)
-
 ModelType = TypeVar("ModelType", bound=AllFeaturesMixin)
 T = TypeVar("T")
 
@@ -329,7 +317,7 @@ class ModelMixin(AllFeaturesMixin):
             cls.session.commit()
             return new_object
         except Exception as e:
-            logger.info(e)
+            logger.debug(e)
             cls.session.rollback()
             return
 

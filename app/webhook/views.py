@@ -79,7 +79,7 @@ class TradeManager(BaseModel):
             if not info or not info.ask or not info.bid:
                 info = mt5.symbol_info_tick(symbol)
             if not info or not info.ask or not info.bid:
-                exception =  Exception(f"Failed to get symbol info for {symbol}")
+                exception = Exception(f"Failed to get symbol info for {symbol}")
                 raise exception
             return info
         except Exception as e:
@@ -118,7 +118,7 @@ class TradeManager(BaseModel):
             return None
 
         # Check if the order request was successful
-        logger.info(f"Order send result: {mt5_request}")
+        logger.debug(f"Order send result: {mt5_request}")
         if mt5_request.retcode not in [
             mt5.TRADE_RETCODE_REQUOTE,
             mt5.TRADE_RETCODE_PRICE_OFF,
@@ -146,20 +146,20 @@ class TradeManager(BaseModel):
         -------
             Nothing
         """
-        logger.info(f"Attempting to close trades for symbol {request.symbol}")
+        logger.debug(f"Attempting to close trades for symbol {request.symbol}")
         # Iterate through each open trade
         for existing_trade in open_orders:
             # Check if the existing trade direction is different from the new trade direction
             if existing_trade.type != request.trade_type:
-                logger.info(
+                logger.debug(
                     f"Existing trade direction "
                     f"{'buy' if existing_trade.type == mt5.ORDER_TYPE_BUY else 'sell'} "
                     f"is different from the new trade direction {request.trade_type}"
                 )
-                logger.info(f"Closing trade {existing_trade.ticket}")
+                logger.debug(f"Closing trade {existing_trade.ticket}")
                 # Close the existing trade
                 cls.close_all(existing_trade, comment="close and reverse")
-                logger.info(
+                logger.debug(
                     f"Order closed: {existing_trade.symbol} "
                     f"at {existing_trade.price_current} "
                     f"using {existing_trade.volume} volume"
@@ -327,7 +327,7 @@ class TradeManager(BaseModel):
         if not history:
             return
 
-        logger.info(f"History: {history}")
+        logger.debug(f"History: {history}")
 
         # Save the history to the database and return it
         trade_history = TradeHistory(
@@ -373,29 +373,29 @@ class TradeManager(BaseModel):
                 lambda x: x.symbol == request.symbol
         ):
             # Check if the existing trade is in the same direction as the new trade request
-            logger.info("Existing trades found")
+            logger.debug("Existing trades found")
             if existing_trade.type != (
                     request.trade_type == Actions.BUY and mt5.ORDER_TYPE_BUY
                     or request.trade_type == Actions.SELL and mt5.ORDER_TYPE_SELL
             ):
                 # If not, close the existing trades and reverse the position
                 order_type = OrderType.market
-                logger.info("Closing existing trades and reversing position")
+                logger.debug("Closing existing trades and reversing position")
                 self.close_symbol_trades(request, [existing_trade])
 
             # If the existing trade is in the same direction as the new trade request, do nothing
             else:
-                logger.info("Existing trades are in the same direction as the new trade request. No action needed.")
+                logger.debug("Existing trades are in the same direction as the new trade request. No action needed.")
                 return
         else:
-            logger.info(f"No open orders found for {request.symbol}")
+            logger.debug(f"No open orders found for {request.symbol}")
 
         # Check if there are any pending orders on the symbol
         if pending_orders := mt5.orders_get(symbol=request.symbol):
             for order in pending_orders:
                 # If so, remove them from the symbol
                 pending_request = self.build_remove_request(order)
-                logger.info(f"Removing pending order on symbol {order.symbol}")
+                logger.debug(f"Removing pending order on symbol {order.symbol}")
                 # Remove the pending order from the symbol
                 mt5.order_send(pending_request)
 
@@ -409,7 +409,7 @@ class TradeManager(BaseModel):
             return
 
         # If not, submit a new order at market price
-        order_type == OrderType.market and logger.info("Submitting new position") or logger.info("submitting reverse "
+        order_type == OrderType.market and logger.debug("Submitting new position") or logger.debug("submitting reverse "
                                                                                                  "order at market")
         # Submit the trade request
         return self.submit_trade(request, trade_type=order_type)
@@ -440,8 +440,8 @@ class TradeManager(BaseModel):
 
         """
 
-        trade_type == 'stop' and logger.info(f"Attempting to open new trade for symbol {trade_data.symbol}") or \
-        logger.info(f"Attempting to close and reverse {trade_data.symbol} at market price")
+        trade_type == 'stop' and logger.debug(f"Attempting to open new trade for symbol {trade_data.symbol}") or \
+        logger.debug(f"Attempting to close and reverse {trade_data.symbol} at market price")
         # Check if the trade data is not None and log the trade data
 
         account, balance = cls.get_account()
@@ -460,35 +460,35 @@ class TradeManager(BaseModel):
         # Calculate the volume of the trade
         volume = cls.calculate_volume(trade_data.symbol, balance, price)
         if volume <= 0.1:
-            logger.info(f"Volume is negative: {volume}")
+            logger.debug(f"Volume is negative: {volume}")
             volume = 1.00
         if volume >= 10:
-            logger.info(f"Volume is too high: {volume}")
+            logger.debug(f"Volume is too high: {volume}")
             volume = 1.00
-        logger.info(f"Volume: {volume}")
+        logger.debug(f"Volume: {volume}")
 
         # Build the request object
         request = cls.build_request(trade_data, price, volume, trade_type)
 
         # Submit the request to the MetaTrader 5 API
-        logger.info(f"Executing order: {request}")
+        logger.debug(f"Executing order: {request}")
         sent_order = mt5.order_send(request)
 
         # Check if the order was sent successfully and log the result
         if not sent_order:
             _error = mt5.last_error()
-            logger.info(f"Failed to send order: {_error}")
+            logger.debug(f"Failed to send order: {_error}")
             return BaseResponse(error=_error)
 
         # Check if the order was executed successfully and log the result
-        logger.info(f"Order send result: {sent_order}")
+        logger.debug(f"Order send result: {sent_order}")
         if sent_order.retcode == mt5.TRADE_RETCODE_DONE:
             cls.save_historical_trade(trade_data.symbol, sent_order)
-            logger.info("Order saved successfully")
+            logger.debug("Order saved successfully")
             return sent_order
 
         # If not, log the result
-        logger.info(f"Order {sent_order and request} failed to execute")
+        logger.debug(f"Order {sent_order and request} failed to execute")
         return BaseResponse()
 
 
@@ -511,7 +511,7 @@ async def receive_trade_signal(webhook_request=Body(...)):
 
     # Create a new instance of the TradeManager class
     _tm = TradeManager()
-    logger.info(f"Received trade signal: {webhook_request}")
+    logger.debug(f"Received trade signal: {webhook_request}")
 
     # Check if the webhook request is a string and return if it is
     if isinstance(webhook_request, str):
@@ -520,7 +520,7 @@ async def receive_trade_signal(webhook_request=Body(...)):
     # Check if the webhook request is a dictionary and build the request object
     item = webhook_request
     item = isinstance(item, (str, dict)) and item or item.decode("utf-8")
-    logger.info(f"Received trade signal: {item}")
+    logger.debug(f"Received trade signal: {item}")
     if isinstance(item, dict):
 
         # Check if the trade signal is a dictionary and parse it
@@ -550,11 +550,11 @@ async def receive_trade_signal(webhook_request=Body(...)):
 
     # Check if the response is not None and log the result of the trade signal
     if response:
-        logger.info("Trade signal received and processed successfully.")
+        logger.debug("Trade signal received and processed successfully.")
         return BaseResponse(
             success=True, response="Trade signal received and processed successfully."
         )
 
     # If not, log the result
-    logger.info("Failed to process trade signal.")
+    logger.debug("Failed to process trade signal.")
     return BaseResponse(success=False, error="Failed to process trade signal.")

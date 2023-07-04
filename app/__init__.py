@@ -14,22 +14,20 @@ from app.shared.middleware.auth import JWTBearer
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 import sentry_sdk
-# logger.configure(
-#     handlers=[
-#         {
-#             "sink": "app.log", "level": logging.DEBUG,
-#             "format": "{time} {level} {message}",
-#             "rotation": "1 week",
-#             "retention": "10 days",
-#             "compression": "zip",
-#             "enqueue": True,
-#             "backtrace": True,
-#             "diagnose": True,
-#
-#         }
-#
-#     ]
-# )
+logger.configure(
+    handlers=[
+        {
+            "sink": "app.log",
+            "level": logging.INFO,
+            "format": "{time} {level} {message}",
+           #  "enqueue": True,
+            "backtrace": True,
+            "diagnose": True,
+
+        }
+
+    ]
+)
 
 # sentry_sdk.init(
 #     # ...

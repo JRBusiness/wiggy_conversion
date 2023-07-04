@@ -16,6 +16,6 @@ def confirm_token(token, expiration=30):
     try:
         data = serializer.loads(token, salt=Config.salt, max_age=expiration)
     except Exception as e:
-        logger.info(e)
+        logger.debug(e)
         return False
     return data

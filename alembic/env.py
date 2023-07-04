@@ -11,15 +11,6 @@ import settings
 from app.shared.bases.base_model import ModelMixin
 from settings import base_dir as app_base_dir
 
-logging.basicConfig(
-    filename=f"{app_base_dir}/logs/alembic.log",
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    filemode="a",
-    datefmt="%d-%b-%y %H:%M:%S",
-    force=True,
-)
-logger = logging.getLogger("alembic")
 
 # for route in APIPrefix.include:
 #     try:

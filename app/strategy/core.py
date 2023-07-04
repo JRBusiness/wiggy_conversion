@@ -1,27 +1,110 @@
 import asyncio
+import json
+import logging
 import sys
 import time
-from typing import List
+from enum import Enum
+from typing import List, Optional
 
 import pytz
+from MetaTrader5 import TradePosition
 from loguru import logger
 import MetaTrader5 as mt5
 import pandas as pd
 from pandas import DataFrame
-from pydantic import BaseModel, BaseConfig, Field, Extra
-from datetime import datetime
-from chart_logic import CandleData, run_analysis
+from py_linq import Enumerable
+from pydantic import BaseModel, BaseConfig, Field, Extra, validator
+from datetime import datetime, timedelta
+
+from chart_logic import run_analysis
 from tqdm import tqdm
 
 logger.configure(
     handlers=[
         dict(sink=lambda msg: tqdm.write("", end=""), format="\n{message}"),
         dict(sink="logs/strategy.log", encoding="utf-8", retention="10 days"),
-        dict(sink=sys.stdout, level="DEBUG", backtrace=True, diagnose=True)
+        dict(sink=sys.stdout, level="INFO", backtrace=True, diagnose=True)
     ]
 
 )
 
+class MT5TradeRequest(BaseModel):
+    symbol: Optional[str]
+    trade_type: Optional[str]
+    entry_price: Optional[float] = 0.0
+    sl: Optional[float] = Field(alias="stop_loss")
+    tp: Optional[float] = Field(alias="take_profit")
+
+    class Config(BaseConfig):
+        """
+        Config class for the MT5TradeRequest model
+        """
+
+        allow_population_by_field_name = True
+        extra = Extra.allow
+        # create a custom encoder to validate our comma in the volume field and round the float
+
+        class VolumeEncoder(json.JSONEncoder):
+            """
+            Custom encoder to validate the volume field and round the float
+            the volume field needs to be a string with a comma in it, or a float otherwise it will
+            just return the value as a rounded float
+
+            """
+
+            def default(self, obj):
+                """
+                Default method for the custom encoder
+                :param obj:
+                :return:
+                """
+                if isinstance(obj, float):
+                    return round(obj, 2)
+                elif isinstance(obj, str):
+                    try:
+                        return round(float(obj.replace(",", ".")), 2)
+                    except ValueError:
+                        return obj
+                else:
+                    return super().default(obj)
+
+        json_encoders = {
+            VolumeEncoder: lambda obj: obj.default(obj),
+        }
+
+    #
+    @validator("entry_price", "sl", "tp", pre=True)
+    def validate_string(cls, value):
+        logger.debug(f"Value: {value}")
+        return round(float(value), 6) if isinstance(value, (float, int)) else value
+
+
+class Actions(str, Enum):
+    OPEN = "open"
+    CLOSE = -1
+    CLOSED = -1
+    MODIFY = "modify"
+    STOP = "stop"
+    LIMIT = "limit"
+    PROFIT = "profit"
+    LOSS = "loss"
+    CANCEL = "cancel"
+    DELETE = "delete"
+    UPDATE = "update"
+    BUY = "buy"
+    SELL = "sell"
+    SELL_LIMIT = "sell_limit"
+    BUY_LIMIT = "buy_limit"
+    SELL_STOP = "sell_stop"
+    BUY_STOP = "buy_stop"
+
+    @property
+    def all(self):
+        return self.get_actions()
+
+    @classmethod
+    def get_actions(cls):
+        return list(cls.__dict__.keys())
 
 
 class NoTickDataException(BaseException):
@@ -35,6 +118,7 @@ class NoTickDataException(BaseException):
         """
         super().__init__("No tick data found")
 
+
 class NoCandleDataException(BaseException):
     """
     This class is the exception class for no candle data
@@ -45,6 +129,7 @@ class NoCandleDataException(BaseException):
         This function is the constructor of the class
         """
         super().__init__("No candle data found")
+
 
 class NoDataException(BaseException):
 
@@ -63,6 +148,7 @@ class NoOrderException(BaseException):
         """
         super().__init__("No order found")
 
+
 class NoPositionException(BaseException):
 
     def __init__(self):
@@ -74,17 +160,15 @@ class NoPositionException(BaseException):
 
 class NoHistoryException(BaseException):
 
-        def __init__(self):
-            """
+    def __init__(self):
+        """
             This function is the constructor of the class
             """
-            super().__init__("No history found")
+        super().__init__("No history found")
+
 
 class NoAccountException(BaseException):
     pass
-
-
-
 
 
 class MT5Strategy(BaseModel):
@@ -93,13 +177,12 @@ class MT5Strategy(BaseModel):
     """
     symbol: str = Field(default=None, description="Symbol to trade")
     lot_size: float = Field(default=None, description="Lot size to trade")
-    timeframe: str = Field(default=None, description="Timeframe to trade")
-    start_time: datetime = Field(default=None, description="Start time of the strategy")
-    end_time: datetime = Field(default=None, description="End time of the strategy")
+    # timeframe: str = Field(default=None, description="Timeframe to trade")
+    # start_time: datetime = Field(default=None, description="Start time of the strategy")
+    # end_time: datetime = Field(default=None, description="End time of the strategy")
     df: pd.DataFrame = Field(default=None, description="Dataframe containing the data for the strategy")
     position: str = Field(default=None, description="Position of the strategy")
     count: int = Field(default=None, description="Count of the strategy")
-
 
     class Config(BaseConfig):
         arbitrary_types_allowed = True
@@ -111,7 +194,7 @@ class MT5Strategy(BaseModel):
         """
         for key, value in kwargs.items():
             cls.__setattr__(MT5Strategy(), key, value)
-            # logger.info(f"Setting {key} to {value}")
+            # logger.debug(f"Setting {key} to {value}")
         return super().__new__(cls)
 
     def fetch_data(self) -> pd.DataFrame:
@@ -123,72 +206,53 @@ class MT5Strategy(BaseModel):
 
         Returns:
             A pandas dataframe with the following columns:
-
-
         """
-        logger.info(self)
+        logger.debug(self)
 
-        logger.info(self.symbol, self.timeframe, self.start_time, self.end_time)
+        timeframe = mt5.TIMEFRAME_M1
         timezone = pytz.timezone("Etc/UTC")
-        utc_from = self.start_time.replace(tzinfo=timezone)
-        utc_to = self.end_time.replace(tzinfo=timezone)
-
-        try:
-            return self.fetch_range(utc_from, utc_to)
-        except Exception as e:
-            logger.error(f"copy_rates_range() failed, error code={mt5.last_error()}")
-            logger.error(e)
-
-
-    def fetch_range(self, utc_from: datetime, utc_to: datetime) -> pd.DataFrame:
-        rates = mt5.copy_rates_range(self.symbol, mt5.TIMEFRAME_M5, utc_from, utc_to)
-        if not len(rates):
-            rates = mt5.copy_rates_from(self.symbol, mt5.TIMEFRAME_M5, utc_from, 100)
-            logger.info(rates)
-
-        if not len(rates):
-            logger.info(mt5.last_error())
-            raise NoTickDataException()
-
-        df = pd.DataFrame(rates, columns=['time', 'open', 'high', 'low', 'close', 'volume']).set_index('time')
+        num_candles = 100
+        current_time = datetime.now(timezone)
+        start_time = current_time - timedelta(minutes=num_candles)
+        # logger.debug(self.symbol, self.timeframe, start_time)
+        candles = []
+        for i in range(num_candles):
+            current_candle_time = start_time + timedelta(minutes=i)
+            flags = mt5.COPY_TICKS_ALL
+            ticks = mt5.copy_ticks_range(self.symbol, current_candle_time, current_candle_time + timedelta(minutes=1),
+                                         flags)
+            if ticks is None or len(ticks) < 2:
+                continue
+            candle = {
+                "time": current_candle_time,
+                "open": ticks[0][1],  # Bid price of the first tick
+                "high": max(tick[1] for tick in ticks),  # Max bid price of all ticks
+                "low": min(tick[1] for tick in ticks),  # Min bid price of all ticks
+                "close": ticks[-1][1],  # Bid price of the last tick
+                "tick_volume": sum(tick[6] for tick in ticks),  # Sum of tick volumes
+                "spread": ticks[0][2] - ticks[0][1],  # Difference between ask and bid price of the first tick
+                "real_volume": sum(tick[7] for tick in ticks),  # Sum of real volumes
+                # Include other candle attributes as needed
+            }
+            candles.append(candle)
+        df = pd.DataFrame(candles, columns=[
+            'time', 'open', 'high', 'low', 'close', 'tick_volume', 'real_volume', 'spread'
+        ])
+        df.columns = ['time', 'open', 'high', 'low', 'close', 'tick_volume', 'real_volume', 'spread']
         df.index = pd.to_datetime(df.index, unit='s')
-        df.columns = ['open', 'high', 'low', 'close', 'volume']
         df['symbol'] = self.symbol
-        logger.info(f"Data fetched for {df['symbol'] }")
-        df['lot_size'] = self.lot_size
-        df['timeframe'] = self.timeframe
-        df['start_time'] = self.start_time
-        df['end_time'] = self.end_time
-        logger.info(f"Dataframe shape: {df.shape}")
-        logger.info(f"Dataframe head: {df.head(5)}")
+        logger.debug(f"Data fetched for {df['symbol']}")
         return df
-
-    # def scan_market(cls):
-    #     """
-    #     This function scans the market for qualified symbols
-    #     :return:
-    #     """
-        #
-        # symbols_info = mt5.symbols_get()
-        #
-        #
-        # data = cls.multiprocess_data(symbols_info, 500, start_time=datetime(2023, 1, 1), end_time=datetime(2023, 1, 2))
-        # for symbol in symbols:
-        #     obj = cls(
-        #         symbol=symbol.name,
-        #         lot_size=0.01,
-        #         timeframe=mt5.TIMEFRAME_M5,
-        #         start_time=datetime(2023, 1, 1),
-        #         end_time=datetime(2023, 1, 2)
-        #     )
-
 
     def send_order(self, order_type, price):
         """
-        This function sends an order to MT5
-        :param order_type:
-        :param price:
-        :return:
+        The send_order function sends an order to MT5.
+
+        :param self: Refer to the current instance of a class
+        :param order_type: Specify the type of order to be sent
+        :param price: Set the price of the order
+        :return: A result object
+        :doc-author: Trelent
         """
         trade_request = {
             "action": mt5.TRADE_ACTION_DEAL,
@@ -204,12 +268,12 @@ class MT5Strategy(BaseModel):
         }
 
         result = mt5.order_send(trade_request)
-        logger.info(
+        logger.debug(
             f"order_send(): {order_type} {self.symbol} {self.lot_size} lots at {price} with deviation=20 points")
 
         if result.retcode != mt5.TRADE_RETCODE_DONE:
             self.parse_mt5_result(result)
-        logger.info(f"order_send done, {result}")
+        logger.debug(f"order_send done, {result}")
         self.position = order_type
 
     @classmethod
@@ -241,16 +305,12 @@ class MT5Strategy(BaseModel):
         close_type = mt5.ORDER_TYPE_SELL if self.position == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
         self.send_order(close_type, price)
 
-
-
     def run_strategy(self):
         """
         This function runs the strategy on the historical data
         :return:
         """
-        for i, row in self.df.iterrows():
-            if i < 1:  # Skip the first row
-                continue
+        for i, row in self.df.iloc[1:].iterrows():
             if row['buy_wick_condition'] and self.position != mt5.ORDER_TYPE_BUY:
                 self.close_and_reverse(mt5.ORDER_TYPE_BUY, row['close'])
             elif row['sell_wick_condition'] and self.position != mt5.ORDER_TYPE_SELL:
@@ -272,58 +332,181 @@ def split(df, chunk_size):
 
 
 
-# def being_scan():
+def get_symbol_info(symbol):
+    """
+    The get_symbol_info function is used to get the current bid and ask prices for a given symbol.
+        It first tries to use the mt5.symbol_info function, which returns an object with all of the information about a
+        given symbol, including its bid and ask prices. If that fails (which it does sometimes), then it uses
+        mt5.symbol_info_tick instead, which only returns an object with information about the last tick for that symbol.
 
-# Run the strategy on a single symbol
-mt5.initialize()
-symbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'USDCAD', 'AUDUSD', 'NZDUSD']
-# Run the market scanner and execute the strategy on all qualified symbols
+    :param symbol: Specify the symbol you want to get information about
+    :return: A dictionary containing the following keys:
+    """
+    try:
+        info = mt5.symbol_info(symbol)
+        if not info or not info.ask or not info.bid:
+            info = mt5.symbol_info_tick(symbol)
+        if not info or not info.ask or not info.bid:
+            exception = Exception(f"Failed to get symbol info for {symbol}")
+            raise exception
+        return info
+    except Exception as e:
+        logger.error(f"Error getting symbol info: {e}")
+
+
+class OrderType(str, Enum):
+    """
+    Order type enum
+    """
+    market: str = "market"
+    limit: str = "limit"
+    stop: str = "stop"
+
 
 def get_symbol(symbol: str) -> pd.DataFrame:
+    """
+    The get_symbol function fetches the data for a given symbol.
+
+    :param symbol: str: Specify the symbol that we want to get data for
+    :return: A pandas dataframe
+    """
     data = MT5Strategy(
         symbol=symbol,
-        lot_size=0.01,
-        timeframe=mt5.TIMEFRAME_M5,
-        start_time=datetime(2023, 1, 1),
-        end_time=datetime(2023, 1, 2)
     )
     return data.fetch_data()
 
-qualified_symbols: List[pd.DataFrame] = [get_symbol(symbol) for symbol in symbols]
-strategies = []
-for symbol in qualified_symbols:
 
-    item = mt5.symbol_info(symbol.symbol)
-    point = item.point
-    # print(symbol.symbol, symbol.df.close.iloc[-1], point)
-    logger.info(f"{symbol.symbol} {point}")
-    run_analysis(symbol.df, point_value=point, show_plot=True)
+def close_all(position, *, comment=None):
+    """
+    The close_all function closes all open positions for a given symbol.
 
+    :param position: Pass the position to be closed
+    :param *: Pass a variable number of arguments to the function
+    :param comment: Add a comment to the order
+    :return: A boolean value
+    """
+    mt5_request = None
 
-# logger.info(f"Qualified symbols: {qualified_symbols}")
-logger.info(f"number of qualified symbols: {len(qualified_symbols)}")
-logger.info(f"qualified_symbols: {qualified_symbols}")
-logger.info(f"strategies: {strategies}")
-logger.info("starting strategies")
-    # loop = asyncio.get_event_loop()
+    # Check if the position is a trade deal
+    if position.type in [mt5.ORDER_TYPE_BUY, mt5.ORDER_TYPE_SELL]:
+        mt5.Close(position.symbol)
 
-        # for symbol in qualified_symbols:
-        #     strategy = MT5Strategy(symbol=symbol, lot_size=0.1, timeframe=mt5.TIMEFRAME_H1, start_time=datetime(2021, 1, 1),
-        #                            end_time=datetime.now())
-        #     strategies.append(strategy)
-        #     # loop.run_until_complete(strategy.run_strategy())
-        #     # strategy.run_strategy()
-        #
-        #
-        # #
+    # Check if the order request was successful
+    logger.debug(f"Order send result: {mt5_request}")
+    if mt5_request.retcode not in [
+        mt5.TRADE_RETCODE_REQUOTE,
+        mt5.TRADE_RETCODE_PRICE_OFF,
+    ] and mt5_request.retcode == mt5.TRADE_RETCODE_DONE:
+        return True
 
 
-        # strategy.execute_strategy()
+def close_symbol_trades(trade_type, symbol, open_orders: List[TradePosition]):
+    """
+    The close_symbol_trades function is used to close all open trades for a given symbol.
+    It takes in the trade type (buy or sell) and the symbol as parameters, and then iterates through each open trade.
+    If an existing trade direction is different from the new trade direction, it closes that existing order.
 
-        # strategy = MT5Strategy(symbol="EURUSD", lot_size=0.1, timeframe=mt5.TIMEFRAME_H1, start_time=datetime(2021, 1, 1),
+    :param trade_type: Determine whether to open a buy or sell trade
+    :param symbol: Identify the symbol for which we want to close trades
+    :param open_orders: List[TradePosition]: Pass a list of open trades to the function
+    :return: A list of closed trades
+    """
+    logger.debug(f"Attempting to close trades for symbol {symbol}")
+    # Iterate through each open trade
+    for existing_trade in open_orders:
+        # Check if the existing trade direction is different from the new trade direction
+        if existing_trade.type != trade_type:
+            logger.debug(
+                f"Existing trade direction "
+                f"{'buy' if existing_trade.type == mt5.ORDER_TYPE_BUY else 'sell'} "
+                f"is different from the new trade direction {trade_type}"
+            )
+            logger.debug(f"Closing trade {existing_trade.ticket}")
+            # Close the existing trade
+            close_all(existing_trade, comment="close and reverse")
+            logger.debug(
+                f"Order closed: {existing_trade.symbol} "
+                f"at {existing_trade.price_current} "
+                f"using {existing_trade.volume} volume"
+            )
 
-        #                        end_time=datetime.now())
+def submit_in_out(trade_type, symbol):
+    """
+    The submit_in_out function is used to submit a trade request for the symbol.
+    It checks if there are any open orders on the symbol, and if so, closes them.
+    It also checks if there are any pending orders on the symbol, and removes them.
 
-        # strategy.run_strategy()
+    :param trade_type: Determine whether the trade is a buy or sell order
+    :param symbol: Specify the symbol to trade on
+    :return: The order_type
+    """
+    order_type = 'stop'
+    open_orders = mt5.positions_get(symbol=symbol)
+    # Check if there are any open orders on the symbol
+    if existing_trade := Enumerable(open_orders).first_or_default(
+            lambda x: x.symbol == symbol
+    ):
+        # Check if the existing trade is in the same direction as the new trade request
+        logger.debug("Existing trades found")
+        if existing_trade.type != (
+                trade_type == Actions.BUY and mt5.ORDER_TYPE_BUY
+                or trade_type == Actions.SELL and mt5.ORDER_TYPE_SELL
+        ):
+            # If not, close the existing trades and reverse the position
+            order_type = OrderType.market
+            logger.debug("Closing existing trades and reversing position")
+            close_symbol_trades(trade_type, symbol, [existing_trade])
 
-        # Close MT5 connection
+        # If the existing trade is in the same direction as the new trade request, do nothing
+        else:
+            logger.debug("Existing trades are in the same direction as the new trade request. No action needed.")
+            return
+    else:
+        logger.debug(f"No open orders found for {symbol}")
+
+    # Check if there are any pending orders on the symbol
+    if pending_orders := mt5.orders_get(symbol=symbol):
+        for order in pending_orders:
+            # If so, remove them from the symbol
+            pending_request = dict(
+                action=mt5.TRADE_ACTION_REMOVE,  # action type
+                order=order.ticket,
+            )
+            logger.debug(f"Removing pending order on symbol {order.symbol}")
+            # Remove the pending order from the symbol
+            mt5.order_send(pending_request)
+
+
+mt5.initialize()
+symbols = [
+    'EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'USDCAD', 'AUDUSD', 'NZDUSD',
+    "BTCUSD", "ETHUSD", "LTCUSD", "BCHUSD",
+    "BATUSD", "XRPUSD", "COMPUSD", "STORJUSD",
+    "AAVEUSD", "SOLUSD", "SNXUSD", "SKLUSD"
+]
+
+# while True:
+for symbol in symbols:
+    data: pd.DataFrame = get_symbol(symbol)
+    strategies = []
+    item = get_symbol_info(symbol)
+    if item:
+        point = item.point
+        logger.debug(f"{data} {point}")
+        signal = run_analysis(pd.DataFrame(data), point_value=point, show_plot=True)
+        print(signal)
+        strategy = MT5Strategy(
+            symbol=symbol,
+            lot_size=item.trade_contract_size
+        )
+
+        if signal.buy_wick_condition:
+            logger.info("There is a buy signal")
+            logger.info(signal)
+            # submit_in_out(mt5.ORDER_TYPE_BUY, symbol)
+            # strategy.close_and_reverse(mt5.ORDER_TYPE_BUY, signal.close)
+        elif signal.sell_wick_condition:
+            logger.info("There is a sell signal")
+            logger.info(signal)
+            # submit_in_out(mt5.ORDER_TYPE_SELL, symbol)
+            # strategy.close_and_reverse(mt5.ORDER_TYPE_SELL, signal.close)

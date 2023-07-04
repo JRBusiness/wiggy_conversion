@@ -51,13 +51,13 @@ class SocketServer(Socket):
         session.save()
         self.sessions.append(session)
         self.save()
-        logger.info(f"create_session: {session}")
+        logger.debug(f"create_session: {session}")
 
         if user:
             user = BaseUser.from_orm(user)
             return self.add_user_to_session(user, session)
 
-        # logger.info(f"create_session_user: {user}")
+        # logger.debug(f"create_session_user: {user}")
         # # user = self.query(self.sessions).where(filter_arg=lambda _user: _user.id == user.id).first()
         # return self.add_user_to_session(user, session)
         return session
@@ -66,7 +66,7 @@ class SocketServer(Socket):
         user.save()
         session.user = user
         session.save()
-        logger.info(f"create_session_got_user: {user}")
+        logger.debug(f"create_session_got_user: {user}")
         return session
 
     @classmethod
@@ -85,7 +85,7 @@ class SocketServer(Socket):
 
         user = session.user and User.get(id=session.user.id).first()
         session_user = BaseUser.from_orm(user)
-        logger.info(f"synced session_user: {session_user}")
+        logger.debug(f"synced session_user: {session_user}")
         session_user.save()
         return session_user
 
@@ -114,7 +114,7 @@ class SocketServer(Socket):
             )
         )
         user.save()
-        logger.info(f"synced db_user: {user}")
+        logger.debug(f"synced db_user: {user}")
         return user
 
     def save_session_state(self, session):
@@ -141,7 +141,7 @@ class SocketServer(Socket):
         self.sessions.remove(session)
         session.delete(pk=session.pk)
         session.save()
-        logger.info(f"logout: User {session.user} session deleted in redis")
+        logger.debug(f"logout: User {session.user} session deleted in redis")
         return True
 
     def redis_login(
@@ -173,16 +173,16 @@ class SocketServer(Socket):
             .first_or_default()
         ):
             # self.redis_logout(session)
-            logger.info("login: User already logged in")
+            logger.debug("login: User already logged in")
             return session
         if not user:
-            logger.info("no db user found, have an agent create the user")
+            logger.debug("no db user found, have an agent create the user")
             return
         session = self.create_session(session_id, user=user)
         self.change_room(session)
         self.sync_db_user(session)
         # emit_message = emit_message or f'{"socket": socket.id, "data": user}'
-        logger.info(f"login: User {session.user} session created in redis")
+        logger.debug(f"login: User {session.user} session created in redis")
         return session
 
     def create_room(self, new_room: str):

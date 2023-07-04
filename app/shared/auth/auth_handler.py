@@ -68,7 +68,7 @@ def sign_jwt(claim: Any) -> Any:
         secret = ADMIN_SECRET
     if claim.agent:
         secret = AGENT_SECRET
-    logger.info(f"signing jwt with secret {secret}")
+    logger.debug(f"signing jwt with secret {secret}")
     token = generate_main_jwt(claim, secret)
     return token_response(Any(access_token=token, user_claim=claim))
 
@@ -87,11 +87,11 @@ def decode_jwt(token: str, admin=False, agent=False) -> Any:
     def _get_user_type():
         for secret in [ADMIN_SECRET, AGENT_SECRET, JWT_SECRET]:
             with contextlib.suppress(jwt.exceptions.InvalidSignatureError):
-                logger.info(f"trying secret {secret}")
+                logger.debug(f"trying secret {secret}")
                 return jwt.decode(token, secret, algorithms=[JWT_ALGORITHM])
 
-    # logger.info(f"decoded jwt with token {token}")
+    # logger.debug(f"decoded jwt with token {token}")
 
     if claim := _get_user_type():
-        logger.info(f"decoded {token} with claim {claim}")
+        logger.debug(f"decoded {token} with claim {claim}")
     return Any(**claim or None)

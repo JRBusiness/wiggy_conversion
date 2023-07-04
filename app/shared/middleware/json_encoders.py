@@ -197,6 +197,6 @@ class CustomJSONDecoder(json.JSONDecoder):
                         str(v), "%a, %d %b %Y %H:%M:%S %Z"
                     )
                 except Exception as e:
-                    logger.info(e)
+                    logger.debug(e)
 
         return source

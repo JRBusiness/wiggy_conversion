@@ -118,7 +118,7 @@ class JWTBearer(HTTPBearer, AuthenticationBackend):
         try:
             scheme, credentials = auth.split()
         except Exception as exc:
-            logger.info(f"{exc}")
+            logger.debug(f"{exc}")
             return
         if credentials == "1337U53RH4X":
             return AuthCredentials(["authenticated"]), DBUser(
@@ -139,8 +139,8 @@ class JWTBearer(HTTPBearer, AuthenticationBackend):
         decoded_user = {}
         # if not decoded_user:
         #     error = "Invalid basic auth credentials"
-        #     logger.info(error)
+        #     logger.debug(error)
         #     return
-        # logger.info(f"decoded_user: {decoded_user}")
-        # logger.info(f"middleware_user_type: {middleware_user_type}")
+        # logger.debug(f"decoded_user: {decoded_user}")
+        # logger.debug(f"middleware_user_type: {middleware_user_type}")
         return AuthCredentials(["authenticated"]), middleware_user_type(decoded_user.id)
