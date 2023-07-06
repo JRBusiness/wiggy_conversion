@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 from typing import Optional
 
 import pandas as pd
@@ -10,31 +11,59 @@ import MetaTrader5 as mt5
 
 from utility import calculate_ema, calculate_bollinger_bands, calculate_rsi
 
+class Actions(str, Enum):
+    OPEN = "open"
+    CLOSE = -1
+    CLOSED = -1
+    MODIFY = "modify"
+    STOP = "stop"
+    LIMIT = "limit"
+    PROFIT = "profit"
+    LOSS = "loss"
+    CANCEL = "cancel"
+    DELETE = "delete"
+    UPDATE = "update"
+    BUY = "buy"
+    SELL = "sell"
+    SELL_LIMIT = "sell_limit"
+    BUY_LIMIT = "buy_limit"
+    SELL_STOP = "sell_stop"
+    BUY_STOP = "buy_stop"
+
+    @property
+    def all(self):
+        return self.get_actions()
+
+    @classmethod
+    def get_actions(cls):
+        return list(cls.__dict__.keys())
+
 
 class CandleData:
     def __init__(
         self,
         symbol: Optional[str],
-        time: Optional[datetime] = datetime.now(pytz.utc),
-        open: Optional[float] = None,
-        high: Optional[float] = None,
-        low: Optional[float] = None,
-        close: Optional[float] = None,
-        tick_volume: Optional[int] = None,
-        spread: Optional[int] = None,
-        real_volume: Optional[int] = None,
-        ema_length: Optional[int] = None,
-        gap_window: Optional[int] = None,
-        bar_limit: Optional[int] = None,
-        pip_threshold: Optional[int] = None,
-        fib_59: Optional[float] = None,
-        fib_163: Optional[float] = None,
-        buy_condition: Optional[bool] = None,
-        sell_condition: Optional[bool] = None,
-        wick_size: Optional[float] = None,
-        buy_wick_condition: Optional[bool] = None,
-        sell_wick_condition: Optional[bool] = None,
-        ema_long: Optional[float] = None,
+        time: Optional[datetime],
+        open: Optional[float],
+        high: Optional[float],
+        low: Optional[float],
+        close: Optional[float],
+        tick_volume: Optional[float],
+        spread: Optional[float],
+        real_volume: Optional[float],
+        ema_length: Optional[int],
+        gap_window: Optional[int],
+        bar_limit: Optional[int],
+        pip_threshold: Optional[float],
+        fib_59: Optional[float],
+        fib_163: Optional[float],
+        buy_condition: Optional[bool],
+        sell_condition: Optional[bool],
+        wick_size: Optional[float],
+        buy_wick_condition: Optional[bool],
+        sell_wick_condition: Optional[bool],
+        ema_long: Optional[float],
+        position: Optional[str],
     ):
         self.symbol = symbol
         self.time = time
@@ -57,6 +86,7 @@ class CandleData:
         self.buy_wick_condition = buy_wick_condition
         self.sell_wick_condition = sell_wick_condition
         self.ema_long = ema_long
+        self.position = position
 
 
 def validate_data(candle_data: pd.DataFrame) -> bool:
@@ -77,7 +107,6 @@ def validate_data(candle_data: pd.DataFrame) -> bool:
             return False
     return True
 
-
 def run_analysis(candle_data: pd.DataFrame, point_value: float, show_plot=False) -> Optional[CandleData]:
     pip_threshold = 10
     ema_length = 100
@@ -93,35 +122,66 @@ def run_analysis(candle_data: pd.DataFrame, point_value: float, show_plot=False)
         gap_window = candle_data.shape[0]
     if candle_data.shape[0] < bar_limit:
         bar_limit = candle_data.shape[0]
-    ema_high = calculate_ema(candle_data['high'], ema_length)
-    ema_low = calculate_ema(candle_data['low'], ema_length)
+
+    candle_data["position"] = None  # Add position column
+
+    ema_high = calculate_ema(candle_data, "high", ema_length)
+    ema_low = calculate_ema(candle_data, "low", ema_length)
     candle_data["ema_high"] = ema_high
     candle_data["ema_low"] = ema_low
+
     try:
-        ema_long = calculate_ema(candle_data, ema_length)  # Calculate EMA
+        ema_long = calculate_ema(candle_data, "close", ema_length)  # Calculate EMA
         candle_data["ema_long"] = ema_long
         candle_data["gap"] = candle_data["close"] - ema_long
         candle_data["longest_gap"] = candle_data["gap"].rolling(window=gap_window).max()
         candle_data["buy_condition"] = candle_data["gap"] < 0
         candle_data["sell_condition"] = candle_data["gap"] > 0
         candle_data["wick_size"] = abs(candle_data["high"] - candle_data["low"]) / point_value
-        candle_data["buy_wick_condition"] = candle_data["buy_condition"] & (candle_data["wick_size"] >= pip_threshold)
-        candle_data["sell_wick_condition"] = candle_data["sell_condition"] & (candle_data["wick_size"] >= pip_threshold)
+
+        # Determine position based on alternating buy/sell signals
+        position = None
+        for i, row in candle_data.iterrows():
+            if position == Actions.BUY:
+                candle_data.at[i, "buy_condition"] = False
+                if row["sell_condition"]:
+                    position = Actions.SELL
+                    candle_data.at[i, "position"] = Actions.SELL
+            elif position == Actions.SELL:
+                candle_data.at[i, "sell_condition"] = False
+                if row["buy_condition"]:
+                    position = Actions.BUY
+                    candle_data.at[i, "position"] = Actions.BUY
+            else:
+                if row["buy_condition"]:
+                    position = Actions.BUY
+                    candle_data.at[i, "position"] = Actions.BUY
+                elif row["sell_condition"]:
+                    position = Actions.SELL
+                    candle_data.at[i, "position"] = Actions.SELL
+
+        candle_data["buy_wick_condition"] = (
+            candle_data["buy_condition"]
+            & (candle_data["wick_size"] >= pip_threshold)
+        )
+        candle_data["sell_wick_condition"] = (
+            candle_data["sell_condition"]
+            & (candle_data["wick_size"] >= pip_threshold)
+        )
         candle_data["buy_wick_count"] = candle_data["buy_wick_condition"].rolling(window=bar_limit).sum()
         candle_data["sell_wick_count"] = candle_data["sell_wick_condition"].rolling(window=bar_limit).sum()
         candle_data["fib_59"] = (
-            candle_data["low"].shift(1)
-            + (candle_data["high"].shift(1) - candle_data["low"].shift(1)) * 0.59
+            candle_data["low"].shift(1) + (candle_data["high"].shift(1) - candle_data["low"].shift(1)) * 0.59
         )
         candle_data["fib_163"] = (
-            candle_data["low"].shift(1)
-            + (candle_data["high"].shift(1) - candle_data["low"].shift(1)) * 1.63
+            candle_data["low"].shift(1) + (candle_data["high"].shift(1) - candle_data["low"].shift(1)) * 1.63
         )
 
-        candle_data['atr'] = ta.volatility.average_true_range(candle_data['high'], candle_data['low'],
-                                                              candle_data['close'],
-                                                              n=14)
-        candle_data['rsi'] = ta.momentum.rsi(candle_data['close'], n=14)
+        candle_data["atr"] = ta.volatility.average_true_range(
+            candle_data["high"], candle_data["low"], candle_data["close"], window=14
+        )
+        candle_data["rsi"] = ta.momentum.rsi(candle_data["close"], window=14)
+
         if show_plot:
             # Ensure the data is sorted by index before plotting
             candle_data = candle_data.sort_index()
@@ -150,33 +210,121 @@ def run_analysis(candle_data: pd.DataFrame, point_value: float, show_plot=False)
             buy_wick_condition=last_row["buy_wick_condition"],
             sell_wick_condition=last_row["sell_wick_condition"],
             ema_long=last_row["ema_long"],
+            position=last_row["position"],
         )
 
     except Exception as e:
         logger.error(f"Error occurred during analysis: {str(e)}")
 
 
-def plot_data(candle_data, indicators=None):
-    """
-    The plot_data function takes a dataframe of candle data and plots the data and indicators.
-    :param candle_data: pd.DataFrame: The dataframe of candle data
-    :param indicators: List[str]: List of indicators or data columns to plot
-    :return: None
-    """
-    if indicators is None:
-        indicators = ["close", "ema_long", "fib_59", "fib_163"]
+def plot_data(candle_data: pd.DataFrame):
+    fig = go.Figure()
 
-    fig = go.Figure(data=[go.Candlestick(x=candle_data.index,
-                                         open=candle_data['open'],
-                                         high=candle_data['high'],
-                                         low=candle_data['low'],
-                                         close=candle_data['close'])])
+    # Plot candlestick chart
+    fig.add_trace(go.Candlestick(
+        x=candle_data['time'],
+        open=candle_data['open'],
+        high=candle_data['high'],
+        low=candle_data['low'],
+        close=candle_data['close'],
+        name='Candlestick',
+        increasing_line_color='green',
+        decreasing_line_color='red'
+    ))
 
-    for indicator in indicators:
-        fig.add_trace(go.Scatter(x=candle_data.index, y=candle_data[indicator], name=indicator))
+    # Add buy markers
+    buy_markers = candle_data[candle_data['buy_wick_condition']]
+    fig.add_trace(go.Scatter(
+        x=buy_markers['time'],
+        y=buy_markers['low'],
+        mode='markers',
+        name='Buy Signal',
+        marker=dict(
+            color='green',
+            size=12,
+            symbol='triangle-up',
+            line=dict(
+                color='black',
+                width=2
+            )
+        ),
+        text='Buy Signal',
+        textposition='bottom center'
+    ))
 
-    fig.update_layout(title="Candle Data", xaxis_title="Date", yaxis_title="Value")
+    # Add sell markers
+    sell_markers = candle_data[candle_data['sell_wick_condition']]
+    fig.add_trace(go.Scatter(
+        x=sell_markers['time'],
+        y=sell_markers['high'],
+        mode='markers',
+        name='Sell Signal',
+        marker=dict(
+            color='red',
+            size=12,
+            symbol='triangle-down',
+            line=dict(
+                color='black',
+                width=2
+            )
+        ),
+        text='Sell Signal',
+        textposition='top center'
+    ))
+
+    # Add annotations
+    annotations = []
+    for i, row in candle_data.iterrows():
+        if row['buy_wick_condition']:
+            annotations.append(dict(
+                x=row['time'],
+                y=row['low'],
+                xref='x',
+                yref='y',
+                text='Buy',
+                showarrow=True,
+                arrowhead=2,
+                ax=0,
+                ay=-40,
+                font=dict(
+                    color='green',
+                    size=14
+                )
+            ))
+        elif row['sell_wick_condition']:
+            annotations.append(dict(
+                x=row['time'],
+                y=row['high'],
+                xref='x',
+                yref='y',
+                text='Sell',
+                showarrow=True,
+                arrowhead=2,
+                ax=0,
+                ay=40,
+                font=dict(
+                    color='red',
+                    size=14
+                )
+            ))
+    fig.update_layout(
+        annotations=annotations
+    )
+
     fig.show()
+
+
+
+def has_existing_position(candle_data: pd.DataFrame, index: pd.Timestamp, trade_type: Actions) -> bool:
+    """
+    Check if there is an existing position with the same trade type at the given index.
+    """
+    existing_positions = candle_data["position"][:index]
+    return any(existing_positions == trade_type)
+
+
+
+
 
 if __name__ == "__main__":
     data = {

@@ -6,7 +6,7 @@ from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 
 from app.shared.bases.base_model import ModelMixin
-from app.webhook.schemas import Actions
+from app.strategy.schemas.schemas import Actions
 
 
 class Users(ModelMixin):

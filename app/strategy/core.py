@@ -495,18 +495,18 @@ for symbol in symbols:
         logger.debug(f"{data} {point}")
         signal = run_analysis(pd.DataFrame(data), point_value=point, show_plot=True)
         print(signal)
-        strategy = MT5Strategy(
-            symbol=symbol,
-            lot_size=item.trade_contract_size
-        )
-
-        if signal.buy_wick_condition:
-            logger.info("There is a buy signal")
-            logger.info(signal)
-            # submit_in_out(mt5.ORDER_TYPE_BUY, symbol)
-            # strategy.close_and_reverse(mt5.ORDER_TYPE_BUY, signal.close)
-        elif signal.sell_wick_condition:
-            logger.info("There is a sell signal")
-            logger.info(signal)
-            # submit_in_out(mt5.ORDER_TYPE_SELL, symbol)
-            # strategy.close_and_reverse(mt5.ORDER_TYPE_SELL, signal.close)
+        # strategy = MT5Strategy(
+        #     symbol=symbol,
+        #     lot_size=item.trade_contract_size
+        # )
+        # if signal:
+        #     if signal.buy_wick_condition:
+        #         logger.info("There is a buy signal")
+        #         logger.info(signal)
+        #         # submit_in_out(mt5.ORDER_TYPE_BUY, symbol)
+        #         # strategy.close_and_reverse(mt5.ORDER_TYPE_BUY, signal.close)
+        #     elif signal.sell_wick_condition:
+        #         logger.info("There is a sell signal")
+        #         logger.info(signal)
+        #         # submit_in_out(mt5.ORDER_TYPE_SELL, symbol)
+        #         # strategy.close_and_reverse(mt5.ORDER_TYPE_SELL, signal.close)

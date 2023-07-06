@@ -2,8 +2,8 @@ from typing import List
 import pandas as pd
 
 
-def calculate_ema(data: pd.DataFrame, ema_length: int) -> pd.Series:
-    return data["close"].ewm(span=ema_length).mean()
+def calculate_ema(data: pd.DataFrame, column: str, ema_length: int) -> pd.Series:
+    return data[column].ewm(span=ema_length).mean()
 
 
 def calculate_bollinger_bands(data: pd.DataFrame, window: int, num_std: int) -> List[pd.Series]:
