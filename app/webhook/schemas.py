@@ -10,7 +10,7 @@ from fastapi import Body
 from pydantic import BaseModel, validator, Field, BaseConfig, Extra
 from loguru import logger
 
-logger.debug("Importing schemas from webhook.schemas.py")
+logger.info("Importing schemas from webhook.schemas.py")
 
 sentry_sdk.init()
 
@@ -228,7 +228,7 @@ class MT5TradeRequest(BaseModel):
     #
     @validator("entry_price", "sl", "tp", pre=True)
     def validate_string(cls, value):
-        logger.debug(f"Value: {value}")
+        logger.info(f"Value: {value}")
         return round(float(value), 6) if isinstance(value, (float, int)) else value
 
     """
@@ -242,7 +242,7 @@ class MT5TradeRequest(BaseModel):
     #     if isinstance(value, str):
     #         value = value.replace(",", "")
     #
-    #     logger.debug(f"Value: {value}")
+    #     logger.info(f"Value: {value}")
     #
     #     return float(f"{value:.2f}") / 10
 

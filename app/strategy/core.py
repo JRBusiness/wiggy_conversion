@@ -1,22 +1,19 @@
 import asyncio
 import json
-import logging
 import sys
-import time
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Any
 
 import pytz
 from MetaTrader5 import TradePosition
 from loguru import logger
 import MetaTrader5 as mt5
 import pandas as pd
-from pandas import DataFrame
 from py_linq import Enumerable
 from pydantic import BaseModel, BaseConfig, Field, Extra, validator
 from datetime import datetime, timedelta
 
-from chart_logic import run_analysis
+from app.strategy.signal import Signals
 from tqdm import tqdm
 
 logger.configure(
@@ -75,7 +72,7 @@ class MT5TradeRequest(BaseModel):
     #
     @validator("entry_price", "sl", "tp", pre=True)
     def validate_string(cls, value):
-        logger.debug(f"Value: {value}")
+        logger.info(f"Value: {value}")
         return round(float(value), 6) if isinstance(value, (float, int)) else value
 
 
@@ -106,6 +103,24 @@ class Actions(str, Enum):
     def get_actions(cls):
         return list(cls.__dict__.keys())
 
+class BaseResponse(BaseModel):
+    """
+    Base Response abstraction for standardized returns
+    """
+
+    success: bool = False
+    error: Optional[str] = None
+    response: Optional[Any] = None
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    def dict(self, *args, **kwargs) -> dict[str, Any]:
+        """
+        Override the default dict method to exclude None values in the response
+        """
+        kwargs.pop("exclude_none", None)
+        return super().dict(*args, exclude_none=True, **kwargs)
 
 class NoTickDataException(BaseException):
     """
@@ -194,7 +209,7 @@ class MT5Strategy(BaseModel):
         """
         for key, value in kwargs.items():
             cls.__setattr__(MT5Strategy(), key, value)
-            # logger.debug(f"Setting {key} to {value}")
+            # logger.info(f"Setting {key} to {value}")
         return super().__new__(cls)
 
     def fetch_data(self) -> pd.DataFrame:
@@ -207,14 +222,14 @@ class MT5Strategy(BaseModel):
         Returns:
             A pandas dataframe with the following columns:
         """
-        logger.debug(self)
+        logger.info(self)
 
         timeframe = mt5.TIMEFRAME_M1
         timezone = pytz.timezone("Etc/UTC")
         num_candles = 100
         current_time = datetime.now(timezone)
         start_time = current_time - timedelta(minutes=num_candles)
-        # logger.debug(self.symbol, self.timeframe, start_time)
+        # logger.info(self.symbol, self.timeframe, start_time)
         candles = []
         for i in range(num_candles):
             current_candle_time = start_time + timedelta(minutes=i)
@@ -241,7 +256,7 @@ class MT5Strategy(BaseModel):
         df.columns = ['time', 'open', 'high', 'low', 'close', 'tick_volume', 'real_volume', 'spread']
         df.index = pd.to_datetime(df.index, unit='s')
         df['symbol'] = self.symbol
-        logger.debug(f"Data fetched for {df['symbol']}")
+        logger.info(f"Data fetched for {df['symbol']}")
         return df
 
     def send_order(self, order_type, price):
@@ -268,12 +283,12 @@ class MT5Strategy(BaseModel):
         }
 
         result = mt5.order_send(trade_request)
-        logger.debug(
+        logger.info(
             f"order_send(): {order_type} {self.symbol} {self.lot_size} lots at {price} with deviation=20 points")
 
         if result.retcode != mt5.TRADE_RETCODE_DONE:
             self.parse_mt5_result(result)
-        logger.debug(f"order_send done, {result}")
+        logger.info(f"order_send done, {result}")
         self.position = order_type
 
     @classmethod
@@ -375,29 +390,89 @@ def get_symbol(symbol: str) -> pd.DataFrame:
     )
     return data.fetch_data()
 
-
-def close_all(position, *, comment=None):
+def get_account():
     """
-    The close_all function closes all open positions for a given symbol.
+    The get_account function returns the account info and balance of the current MetaTrader 5 account.
 
-    :param position: Pass the position to be closed
-    :param *: Pass a variable number of arguments to the function
-    :param comment: Add a comment to the order
-    :return: A boolean value
+    Parameters
+    ----------
+        cls
+            Pass the class to the function
+
+    Returns
+    -------
+
+        A tuple, containing the account info and balance
+
     """
-    mt5_request = None
+    account = mt5.account_info()
+    logger.info(f"Account info: {account}")
+    balance = account.balance
+    logger.info(f"Account balance: {balance}")
+    return account, balance
 
-    # Check if the position is a trade deal
-    if position.type in [mt5.ORDER_TYPE_BUY, mt5.ORDER_TYPE_SELL]:
-        mt5.Close(position.symbol)
+def close_all(trade, comment):
+    """
+    The close_all function is used to close all open trades for a given trade type and symbol.
 
-    # Check if the order request was successful
-    logger.debug(f"Order send result: {mt5_request}")
-    if mt5_request.retcode not in [
-        mt5.TRADE_RETCODE_REQUOTE,
-        mt5.TRADE_RETCODE_PRICE_OFF,
-    ] and mt5_request.retcode == mt5.TRADE_RETCODE_DONE:
-        return True
+    Parameters
+    ----------
+        trade: MT5Trade
+            The trade to close
+        comment: str
+            The comment for the close order
+
+    Returns
+    -------
+        A BaseResponse object or None
+
+    """
+    symbol = trade.symbol
+    trade_type = Actions.BUY if trade.type == mt5.ORDER_TYPE_BUY else Actions.SELL
+    logger.info(f"Closing all {trade_type} trades for symbol {symbol}")
+
+    # Get the account balance
+    _, balance = get_account()
+
+    # Get the symbol data
+    symbol_data = get_symbol_info(symbol)
+
+    # Get the price of the symbol
+    price = symbol_data and (
+        symbol_data.ask
+        if trade_type == Actions.BUY
+        else symbol_data.bid
+    )
+
+    # Return if the price is None
+    if not balance or not price:
+        return None
+
+    # Calculate the volume of the trade
+    volume = trade.volume
+
+    # Build the request object
+    request = build_request(symbol, price, volume, trade_type)
+
+    # Submit the request to the MetaTrader 5 API
+    logger.info(f"Executing order: {request}")
+    sent_order = mt5.order_send(request)
+
+    # Check if the order was sent successfully and log the result
+    if sent_order is None:
+        _error = mt5.last_error()
+        logger.info(f"Failed to send order: {_error}")
+        return None
+
+    # Check if the order was executed successfully and log the result
+    logger.info(f"Order send result: {sent_order}")
+    if sent_order.retcode == mt5.TRADE_RETCODE_DONE:
+        logger.info("Order saved successfully")
+        return sent_order
+
+    # If not, log the result
+    logger.info(f"Order {sent_order and request} failed to execute")
+    return None
 
 
 def close_symbol_trades(trade_type, symbol, open_orders: List[TradePosition]):
@@ -411,26 +486,26 @@ def close_symbol_trades(trade_type, symbol, open_orders: List[TradePosition]):
     :param open_orders: List[TradePosition]: Pass a list of open trades to the function
     :return: A list of closed trades
     """
-    logger.debug(f"Attempting to close trades for symbol {symbol}")
+    logger.info(f"Attempting to close trades for symbol {symbol}")
     # Iterate through each open trade
     for existing_trade in open_orders:
         # Check if the existing trade direction is different from the new trade direction
         if existing_trade.type != trade_type:
-            logger.debug(
+            logger.info(
                 f"Existing trade direction "
                 f"{'buy' if existing_trade.type == mt5.ORDER_TYPE_BUY else 'sell'} "
                 f"is different from the new trade direction {trade_type}"
             )
-            logger.debug(f"Closing trade {existing_trade.ticket}")
+            logger.info(f"Closing trade {existing_trade.ticket}")
             # Close the existing trade
             close_all(existing_trade, comment="close and reverse")
-            logger.debug(
+            logger.info(
                 f"Order closed: {existing_trade.symbol} "
                 f"at {existing_trade.price_current} "
                 f"using {existing_trade.volume} volume"
             )
 
-def submit_in_out(trade_type, symbol):
+def submit_in_out(symbol, volume, trade_type):
     """
     The submit_in_out function is used to submit a trade request for the symbol.
     It checks if there are any open orders on the symbol, and if so, closes them.
@@ -447,22 +522,22 @@ def submit_in_out(trade_type, symbol):
             lambda x: x.symbol == symbol
     ):
         # Check if the existing trade is in the same direction as the new trade request
-        logger.debug("Existing trades found")
+        logger.info("Existing trades found")
         if existing_trade.type != (
                 trade_type == Actions.BUY and mt5.ORDER_TYPE_BUY
                 or trade_type == Actions.SELL and mt5.ORDER_TYPE_SELL
         ):
             # If not, close the existing trades and reverse the position
             order_type = OrderType.market
-            logger.debug("Closing existing trades and reversing position")
+            logger.info("Closing existing trades and reversing position")
             close_symbol_trades(trade_type, symbol, [existing_trade])
 
         # If the existing trade is in the same direction as the new trade request, do nothing
         else:
-            logger.debug("Existing trades are in the same direction as the new trade request. No action needed.")
+            logger.info("Existing trades are in the same direction as the new trade request. No action needed.")
             return
     else:
-        logger.debug(f"No open orders found for {symbol}")
+        logger.info(f"No open orders found for {symbol}")
 
     # Check if there are any pending orders on the symbol
     if pending_orders := mt5.orders_get(symbol=symbol):
@@ -472,9 +547,154 @@ def submit_in_out(trade_type, symbol):
                 action=mt5.TRADE_ACTION_REMOVE,  # action type
                 order=order.ticket,
             )
-            logger.debug(f"Removing pending order on symbol {order.symbol}")
+            logger.info(f"Removing pending order on symbol {order.symbol}")
             # Remove the pending order from the symbol
             mt5.order_send(pending_request)
+    return submit_trade(volume, symbol, order_type)
+
+
+def round_10_cents(price: float):
+    rounded_price = round(price * 100) / 100
+    return float("{:.3f}".format(rounded_price))
+
+
+def calculate_volume(symbol, balance: float, price: float) -> float:
+    # Get the symbol info
+    symbol_info = mt5.symbol_info(symbol)
+    logger.info(f"Symbol info: {symbol_info}")
+
+    # Calculate the volume based on the balance and price
+    volume = (
+        balance / price * 0.002
+        if symbol_info.digits == 3
+        else balance / price * 0.0002
+    )
+
+    # Check if the volume is within the allowed limits
+    if volume < symbol_info.volume_min:
+        volume = symbol_info.volume_min
+    elif volume > symbol_info.volume_max:
+        volume = symbol_info.volume_max
+
+    # Return the volume rounded to 2 decimal places
+    return round(volume, 2) if volume > 0.01 else 0.01
+
+def build_request(symbol, price: float, volume: float, trade_type: str = 'stop') -> dict:
+    """
+    The build_request function is used to build a request for the MT5 API.
+
+    Parameters
+    ----------
+        cls
+            Access the class methods
+        trade_data: MT5TradeRequest
+            Pass the trade data to the function
+        price: float
+            Set the price of the order
+        volume: float
+            Specify the volume of the trade
+        trade_type: str
+            Determine whether the order is a market or stop order
+
+    Returns
+    -------
+        A dictionary with the following keys:
+
+    """
+    #  Build the request based on the trade type (market or stop)
+    trade_type_data = {}
+    if trade_type == OrderType.market:
+        trade_type_data = dict(
+            action=mt5.TRADE_ACTION_DEAL,
+            type=mt5.ORDER_TYPE_BUY if trade_type == Actions.BUY else mt5.ORDER_TYPE_SELL,
+            comment="close and reverse",
+        )
+    elif trade_type == 'stop':
+        trade_type_data = dict(
+            action=mt5.TRADE_ACTION_PENDING,
+            type=mt5.ORDER_TYPE_BUY_STOP if trade_type == Actions.BUY else mt5.ORDER_TYPE_SELL_STOP,
+            comment="New position",
+        )
+
+    # Build the request dictionary and return it
+    return dict(
+        volume=round_10_cents(volume),
+        symbol=symbol,
+        price=round_10_cents(price),
+        stoplimit=round_10_cents(price + 0.01),
+        magic=1337,
+        type_filling=mt5.ORDER_FILLING_IOC,
+
+    ) | trade_type_data
+
+
+def submit_trade(volume, symbol, trade_type):
+    """
+    The submit_trade function is used to submit a trade request to the MetaTrader 5 API.
+
+    Parameters
+    ----------
+        volume: float
+            Specify the volume of the trade
+        symbol: str
+            The symbol to trade
+        trade_type: str
+            Determine if the trade is a stop loss or not
+
+    Returns
+    -------
+        A BaseResponse object or None
+
+    """
+
+    trade_type == 'stop' and logger.info(f"Attempting to open new trade for symbol {symbol}") or \
+    logger.info(f"Attempting to close and reverse {symbol} at market price")
+    # Check if the trade data is not None and log the trade data
+
+    _, balance = get_account()
+    symbol_data = get_symbol_info(symbol)
+
+    # Get the price of the symbol
+    price = symbol_data and (
+        symbol_data.ask
+        if trade_type == 'buy'
+        else symbol_data.bid
+    )
+    # return if the price is None
+    if not balance or not price:
+        return None
+
+    # Calculate the volume of the trade
+    if volume <= 0.1:
+        logger.info(f"Volume is negative: {volume}")
+        volume = 1.00
+    if volume >= 10:
+        logger.info(f"Volume is too high: {volume}")
+        volume = 1.00
+    logger.info(f"Volume: {volume}")
+
+    # Build the request object
+    request = build_request(symbol, price, volume, trade_type)
+
+    # Submit the request to the MetaTrader 5 API
+    logger.info(f"Executing order: {request}")
+    sent_order = mt5.order_send(request)
+
+    # Check if the order was sent successfully and log the result
+    if sent_order is None:
+        _error = mt5.last_error()
+        logger.info(f"Failed to send order: {_error}")
+        return None
+
+    # Check if the order was executed successfully and log the result
+    logger.info(f"Order send result: {sent_order}")
+    if sent_order.retcode == mt5.TRADE_RETCODE_DONE:
+        logger.info("Order saved successfully")
+        return sent_order
+
+    # If not, log the result
+    logger.info(f"Order {sent_order and request} failed to execute")
+    return None
 
 
 mt5.initialize()
@@ -487,26 +707,12 @@ symbols = [
 
 # while True:
 for symbol in symbols:
-    data: pd.DataFrame = get_symbol(symbol)
-    strategies = []
-    item = get_symbol_info(symbol)
-    if item:
-        point = item.point
-        logger.debug(f"{data} {point}")
-        signal = run_analysis(pd.DataFrame(data), point_value=point, show_plot=True)
-        print(signal)
-        strategy = MT5Strategy(
-            symbol=symbol,
-            lot_size=item.trade_contract_size
-        )
-
-        if signal.buy_wick_condition:
-            logger.info("There is a buy signal")
-            logger.info(signal)
-            # submit_in_out(mt5.ORDER_TYPE_BUY, symbol)
-            # strategy.close_and_reverse(mt5.ORDER_TYPE_BUY, signal.close)
-        elif signal.sell_wick_condition:
-            logger.info("There is a sell signal")
-            logger.info(signal)
-            # submit_in_out(mt5.ORDER_TYPE_SELL, symbol)
-            # strategy.close_and_reverse(mt5.ORDER_TYPE_SELL, signal.close)
+    signal = Signals()
+    signal = signal.check_signal(symbol, show_plot=True)
+    if signal:
+        account_info = mt5.account_info()
+        margin = account_info.margin
+        available_margin = account_info.equity - margin
+        volume = calculate_volume(symbol, available_margin, signal.get("entry_price"))
+        submit_in_out(symbol, volume, signal.get("trade_type"))
+        # time.sleep(60)

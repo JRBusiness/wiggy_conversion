@@ -1,4 +1,5 @@
 import logging
+import sys
 
 import sentry_sdk
 from fastapi import FastAPI
@@ -17,18 +18,21 @@ import sentry_sdk
 logger.configure(
     handlers=[
         {
-            "sink": "app.log",
-            "level": logging.INFO,
+            "sink": "logs/app.log",
+            "level": "DEBUG",
             "format": "{time} {level} {message}",
-           #  "enqueue": True,
             "backtrace": True,
-            "diagnose": True,
-
+            "diagnose": True
+        },
+        {
+            "sink": sys.stdout,
+            "level": "DEBUG",
+            "format": "{time} {level} {message}",
+            "backtrace": True,
+            "diagnose": True
         }
-
-    ]
+    ],
 )
-
 # sentry_sdk.init(
 #     # ...
 #     integrations=[
@@ -83,9 +87,9 @@ app.add_middleware(
 )
 # app.add_middleware(AuthenticationMiddleware, backend=JWTBearer())
 
-logger.debug("Middleware registered")
+logger.info("Middleware registered")
 
-logger.debug("Database connection established")
+logger.info("Database connection established")
 
 app.build_middleware_stack()
 app.include_router(webhook_router)

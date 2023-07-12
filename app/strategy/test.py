@@ -9,20 +9,11 @@ from typing import List
 
 import MetaTrader5 as mt5
 from MetaTrader5 import TradeDeal, TradePosition
-from fastapi import APIRouter, Body
 from loguru import logger
 from py_linq import Enumerable
 from pydantic import BaseModel
 
-from app.shared.bases.base_responses import BaseResponse
-from app.webhook.models import TradeHistory
-from app.webhook.schemas import Actions, MT5TradeRequest
 from settings import Config
-
-router = APIRouter(
-    prefix="/webhook",
-    tags=["Webhook"],
-)
 
 # Initialize MetaTrader 5
 mt5.initialize()
@@ -126,7 +117,7 @@ class TradeManager(BaseModel):
             return True
 
     @classmethod
-    def close_symbol_trades(cls, request: MT5TradeRequest, open_orders: List[TradePosition]):
+    def close_symbol_trades(cls, trade_type, symbol, open_orders: List[TradePosition]):
         """
         The close_symbol_trades function is used to close all open trades for a given symbol.
         It takes in the MT5TradeRequest object and a list of TradePosition objects as arguments.
@@ -146,15 +137,15 @@ class TradeManager(BaseModel):
         -------
             Nothing
         """
-        logger.info(f"Attempting to close trades for symbol {request.symbol}")
+        logger.info(f"Attempting to close trades for symbol {symbol}")
         # Iterate through each open trade
         for existing_trade in open_orders:
             # Check if the existing trade direction is different from the new trade direction
-            if existing_trade.type != request.trade_type:
+            if existing_trade.type != trade_type:
                 logger.info(
                     f"Existing trade direction "
                     f"{'buy' if existing_trade.type == mt5.ORDER_TYPE_BUY else 'sell'} "
-                    f"is different from the new trade direction {request.trade_type}"
+                    f"is different from the new trade direction {trade_type}"
                 )
                 logger.info(f"Closing trade {existing_trade.ticket}")
                 # Close the existing trade
@@ -229,7 +220,7 @@ class TradeManager(BaseModel):
         return round(volume, 2) if volume > 0.01 else 0.01
 
     @classmethod
-    def build_request(cls, trade_data: MT5TradeRequest, price: float, volume: float, trade_type: str  = 'stop') -> dict:
+    def build_request(cls, trade_data, price: float, volume: float, trade_type: str  = 'stop') -> dict:
         """
         The build_request function is used to build a request for the MT5 API.
 
@@ -299,53 +290,7 @@ class TradeManager(BaseModel):
                 order=trade_data.ticket,
             )
 
-    @classmethod
-    def save_historical_trade(cls, symbol, sent_order):
-        """
-        The save_historical_trade function saves historical trade data to the database.
-
-        Parameters
-        ----------
-            cls
-                Create a new instance of the class
-            symbol
-                Get the history of a particular symbol
-            sent_order
-                Get the order number and comment from the sent_order object
-
-        Returns
-        -------
-            The history object
-
-        """
-        # Get the history of the symbol
-        history = Enumerable(
-            mt5.history_deals_get(symbol=symbol)
-        ).select(lambda x: TradeDeal(*x)).first_or_default(lambda x: x.ticket == sent_order.order)
-
-        # Check if the history is not None and save it to the database
-        if not history:
-            return
-
-        logger.info(f"History: {history}")
-
-        # Save the history to the database and return it
-        trade_history = TradeHistory(
-            symbol=symbol,
-            entry_price=history.price,
-            volume=history.volume,
-            trade_type="buy" if history.type == mt5.ORDER_TYPE_BUY else "sell",
-            ticket=sent_order.order,
-            comment=sent_order.comment,
-            magic=sent_order.magic,
-            action=Actions.OPEN if TradeManager.was_closed else Actions.CLOSE,
-        )
-
-        # Save the trade history to the database
-        trade_history.save()
-        return history
-
-    def submit_in_out(self, request: MT5TradeRequest):
+    def submit_in_out(self, symbol, trade_type):
         """
         The submit_in_out function is used to submit a trade request for the MT5 broker.
         It first checks if there are any existing trades on the symbol in question, and if so, it closes them.

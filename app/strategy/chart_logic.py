@@ -121,7 +121,7 @@ def run_analysis(candle_data: pd.DataFrame, point_value: float, show_plot=False)
         candle_data['atr'] = ta.volatility.average_true_range(candle_data['high'], candle_data['low'],
                                                               candle_data['close'],
                                                               n=14)
-        candle_data['rsi'] = ta.momentum.rsi(candle_data['close'], n=14)
+        candle_data['rsi'] = ta.momentum.rsi(candle_data['close'], window=14)
         if show_plot:
             # Ensure the data is sorted by index before plotting
             candle_data = candle_data.sort_index()

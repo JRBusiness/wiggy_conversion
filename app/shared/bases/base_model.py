@@ -317,7 +317,7 @@ class ModelMixin(AllFeaturesMixin):
             cls.session.commit()
             return new_object
         except Exception as e:
-            logger.debug(e)
+            logger.info(e)
             cls.session.rollback()
             return
 
